@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
-import { UploadCloud, FileImage, Layers } from 'lucide-react';
+import { UploadCloud, FileImage } from 'lucide-react';
 
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'tif', 'tiff'];
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
-export default function UploadDropzone({ onFileSelected, onFilesSelected, onError, isProcessing }) {
+export default function UploadDropzone({ onFileSelected, onError, isProcessing }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -67,30 +67,16 @@ export default function UploadDropzone({ onFileSelected, onFilesSelected, onErro
   const handleFiles = async (fileList) => {
     if (!fileList || fileList.length === 0 || isProcessing) return;
 
-    const files = Array.from(fileList);
-    const validInfos = [];
-    const errors = [];
-
-    for (const file of files) {
-      try {
-        const info = await processSingleFile(file);
-        validInfos.push(info);
-      } catch (err) {
-        errors.push(err.message);
-      }
+    if (fileList.length > 1) {
+      onError?.('Please select one image at a time.');
+      return;
     }
 
-    if (errors.length > 0 && onError) {
-      onError(errors.join('\n'));
-    }
-
-    if (validInfos.length > 0) {
-      if (onFilesSelected) {
-        onFilesSelected(validInfos);
-      }
-      if (onFileSelected) {
-        onFileSelected(validInfos[0]);
-      }
+    try {
+      const info = await processSingleFile(fileList[0]);
+      onFileSelected?.(info);
+    } catch (err) {
+      onError?.(err.message);
     }
   };
 
@@ -135,7 +121,6 @@ export default function UploadDropzone({ onFileSelected, onFilesSelected, onErro
       <input
         ref={fileInputRef}
         type="file"
-        multiple
         accept=".png,.jpg,.jpeg,.tif,.tiff"
         onChange={handleInputChange}
         className="hidden"
@@ -151,15 +136,11 @@ export default function UploadDropzone({ onFileSelected, onFilesSelected, onErro
             Click to browse or drop satellite / aerial imagery here
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Supports batch upload of multiple GeoTIFF (.tif, .tiff), PNG, and JPEG files up to 50 MB each
+            Upload one GeoTIFF (.tif, .tiff), PNG, or JPEG file up to 50 MB
           </p>
         </div>
 
         <div className="flex items-center space-x-3 text-[11px] font-mono text-slate-400">
-          <div className="inline-flex items-center space-x-1.5 bg-geo-950 px-2.5 py-1 rounded-md border border-geo-700/50">
-            <Layers className="w-3.5 h-3.5 text-blue-400" />
-            <span>Multiple files supported</span>
-          </div>
           <div className="inline-flex items-center space-x-1.5 bg-geo-950 px-2.5 py-1 rounded-md border border-geo-700/50">
             <FileImage className="w-3.5 h-3.5 text-cyan-400" />
             <span>Orthorectified RGB recommended</span>

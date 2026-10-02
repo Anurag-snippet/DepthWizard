@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Sliders, 
@@ -7,22 +7,16 @@ import {
   HelpCircle,
   FileCheck,
   Sparkles,
-  CheckCircle2,
-  Layers
+  CheckCircle2
 } from 'lucide-react';
 import UploadDropzone from '../components/upload/UploadDropzone';
-import BatchQueuePreview from '../components/upload/BatchQueuePreview';
-import BatchProcessingModal from '../components/upload/BatchProcessingModal';
 import Notification from '../components/common/Notification';
 import { projectStore } from '../services/projectStore';
-import { createProject, runDepthInference, resolveAiUrl } from '../services/api';
+import { createProject } from '../services/api';
 
 export default function NewAnalysis() {
   const navigate = useNavigate();
-  const fileInputHiddenRef = useRef(null);
-
   const [filesList, setFilesList] = useState([]);
-  const [activeFileIndex, setActiveFileIndex] = useState(0);
 
   const [analysisMode, setAnalysisMode] = useState('relative'); // best default for ordinary PNG/JPG uploads
   const [projectName, setProjectName] = useState('');
@@ -32,42 +26,27 @@ export default function NewAnalysis() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Batch runner state
-  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
-  const [batchQueue, setBatchQueue] = useState([]);
-  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
-  const [isBatchFinished, setIsBatchFinished] = useState(false);
-
-  const handleFilesSelected = (newFiles) => {
+  const handleFileSelected = (newFile) => {
     setFilesList((prev) => {
-      const merged = [...prev, ...newFiles];
-      if (!projectName && merged.length > 0) {
-        const defaultName = merged[0].filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      prev.forEach((file) => {
+        if (file.objectUrl) URL.revokeObjectURL(file.objectUrl);
+      });
+      if (!projectName) {
+        const defaultName = newFile.filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
         setProjectName(defaultName.charAt(0).toUpperCase() + defaultName.slice(1));
       }
-      return merged;
+      return [newFile];
     });
     setErrorMessage(null);
   };
 
-  const handleRemoveIndex = (indexToRemove) => {
+  const handleClearImage = () => {
     setFilesList((prev) => {
-      const item = prev[indexToRemove];
-      if (item?.objectUrl) URL.revokeObjectURL(item.objectUrl);
-      const next = prev.filter((_, idx) => idx !== indexToRemove);
-      if (activeFileIndex >= next.length) {
-        setActiveFileIndex(Math.max(0, next.length - 1));
-      }
-      return next;
+      prev.forEach((file) => {
+        if (file.objectUrl) URL.revokeObjectURL(file.objectUrl);
+      });
+      return [];
     });
-  };
-
-  const handleClearAll = () => {
-    filesList.forEach((f) => {
-      if (f.objectUrl) URL.revokeObjectURL(f.objectUrl);
-    });
-    setFilesList([]);
-    setActiveFileIndex(0);
   };
 
   const handleLoadSample = () => {
@@ -75,7 +54,7 @@ export default function NewAnalysis() {
     navigate(`/workspace?id=${sample.id}`);
   };
 
-  const activeFileInfo = filesList[activeFileIndex] || filesList[0] || null;
+  const activeFileInfo = filesList[0] || null;
 
   // Single Project Flow: Create project in MongoDB Atlas and open in Workspace
   const handleStartSingleAnalysis = async (e) => {
@@ -132,168 +111,13 @@ export default function NewAnalysis() {
     }
   };
 
-  // Batch Pipeline Flow: Process all queued images sequentially
-  const handleStartBatchPipeline = async () => {
-    if (filesList.length === 0) return;
-
-    const initialQueue = filesList.map((item) => ({
-      fileInfo: item,
-      status: 'queued',
-      depthPreviewUrl: null,
-      projectId: null,
-      durationMs: null,
-      error: null,
-    }));
-
-    setBatchQueue(initialQueue);
-    setCurrentBatchIndex(0);
-    setIsBatchFinished(false);
-    setIsBatchModalOpen(true);
-
-    for (let i = 0; i < initialQueue.length; i++) {
-      setCurrentBatchIndex(i);
-      setBatchQueue((prev) => {
-        const next = [...prev];
-        next[i] = { ...next[i], status: 'processing' };
-        return next;
-      });
-
-      const currentItem = initialQueue[i];
-      try {
-        // 1. Create project on backend
-        const itemProjectName = currentItem.fileInfo.filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
-        const backendProject = await createProject({
-          imageFile: currentItem.fileInfo.file,
-          name: itemProjectName,
-          description: projectDescription || 'Batch processed satellite image',
-          mode: 'relative',
-        });
-
-        // 2. Run depth inference via AI service
-        const startTime = Date.now();
-        const result = await runDepthInference(currentItem.fileInfo.file, currentItem.fileInfo.filename, 'turbo');
-        const duration = Date.now() - startTime;
-
-        if (!result.success) {
-          throw new Error(result.detail || 'Inference error');
-        }
-
-        const depthPreviewUrl = resolveAiUrl(result.depth_map_preview_url);
-        const grayscalePreviewUrl = resolveAiUrl(result.grayscale_preview_url);
-
-        // 3. Persist completed project to MongoDB Atlas and projectStore
-        const completedProject = {
-          id: backendProject.id,
-          backendProjectId: backendProject.id,
-          name: itemProjectName,
-          description: projectDescription || 'Batch processed satellite image',
-          mode: 'relative',
-          status: 'completed',
-          stage: 'depth_ready',
-          createdAt: new Date().toISOString(),
-          imageSrc: currentItem.fileInfo.objectUrl,
-          depthMapSrc: depthPreviewUrl,
-          grayscaleDepthSrc: grayscalePreviewUrl,
-          rawDisparitySrc: resolveAiUrl(result.raw_npy_download_url),
-          metadata: {
-            filename: currentItem.fileInfo.filename,
-            extension: currentItem.fileInfo.extension,
-            fileSize: currentItem.fileInfo.sizeBytes,
-            formattedSize: currentItem.fileInfo.formattedSize,
-            width: currentItem.fileInfo.width,
-            height: currentItem.fileInfo.height,
-          },
-          inferenceStats: {
-            inferenceDurationMs: result.inference_duration_ms,
-            totalDurationMs: result.total_processing_duration_ms,
-            predictionDimensions: result.prediction_dimensions,
-            modelName: result.model_name || 'MiDaS v2.1 Small (TFLite)',
-            outputType: result.output_type || 'relative_disparity',
-            statistics: result.statistics,
-          },
-        };
-
-        projectStore.saveProject(completedProject);
-
-        setBatchQueue((prev) => {
-          const next = [...prev];
-          next[i] = {
-            ...next[i],
-            status: 'completed',
-            depthPreviewUrl,
-            projectId: backendProject.id,
-            durationMs: duration,
-          };
-          return next;
-        });
-      } catch (err) {
-        setBatchQueue((prev) => {
-          const next = [...prev];
-          next[i] = {
-            ...next[i],
-            status: 'failed',
-            error: err.message,
-          };
-          return next;
-        });
-      }
-    }
-
-    setIsBatchFinished(true);
-  };
-
   return (
     <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
-      {/* Hidden file input for "Add more" */}
-      <input
-        ref={fileInputHiddenRef}
-        type="file"
-        multiple
-        accept=".png,.jpg,.jpeg,.tif,.tiff"
-        onChange={(e) => {
-          if (e.target.files) {
-            const list = Array.from(e.target.files);
-            // Process additional files
-            Promise.all(
-              list.map((file) => {
-                const objectUrl = URL.createObjectURL(file);
-                return new Promise((res) => {
-                  const img = new Image();
-                  img.onload = () => res({
-                    file,
-                    objectUrl,
-                    filename: file.name,
-                    extension: file.name.split('.').pop()?.toUpperCase() || 'IMG',
-                    sizeBytes: file.size,
-                    formattedSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-                    width: img.naturalWidth || img.width,
-                    height: img.naturalHeight || img.height,
-                  });
-                  img.onerror = () => res({
-                    file,
-                    objectUrl,
-                    filename: file.name,
-                    extension: file.name.split('.').pop()?.toUpperCase() || 'TIF',
-                    sizeBytes: file.size,
-                    formattedSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-                    width: 'Raster',
-                    height: 'Raster',
-                  });
-                  img.src = objectUrl;
-                });
-              })
-            ).then((infos) => handleFilesSelected(infos));
-          }
-          e.target.value = '';
-        }}
-        className="hidden"
-      />
-
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Create Terrain View & Batch Analysis</h1>
+          <h1 className="text-2xl font-bold text-white">Create Terrain View</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Upload one or multiple satellite/aerial images. DepthWizard converts single-view 2D images into interactive 3D terrain models.
+            Upload one satellite or aerial image to create an interactive 3D terrain model.
           </p>
         </div>
 
@@ -318,7 +142,7 @@ export default function NewAnalysis() {
 
       <form onSubmit={handleStartSingleAnalysis} className="space-y-6">
         <ol className="grid grid-cols-3 gap-2 text-xs" aria-label="Analysis steps">
-          {['1. Upload Imagery', '2. Choose Output', '3. Run / Batch Process'].map((label, index) => (
+          {['1. Upload Imagery', '2. Choose Output', '3. Run Analysis'].map((label, index) => (
             <li
               key={label}
               className={`rounded-lg border px-3 py-2 font-medium ${
@@ -334,38 +158,39 @@ export default function NewAnalysis() {
           ))}
         </ol>
 
-        {/* Step 1: Upload Card & Batch Queue */}
+        {/* Step 1: Upload a single image */}
         <div className="bg-geo-900/80 border border-geo-700/70 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 text-xs font-semibold text-slate-200">
               <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-mono">
                 1
               </span>
-              <span>1. Satellite Imagery Ingestion (Single or Multiple)</span>
+              <span>1. Satellite Imagery Ingestion</span>
             </div>
 
             {filesList.length > 0 && (
               <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2.5 py-0.5 rounded-full">
-                {filesList.length} {filesList.length === 1 ? 'file ready' : 'files queued'}
+                Image ready
               </span>
             )}
           </div>
 
           {filesList.length === 0 ? (
             <UploadDropzone
-              onFilesSelected={handleFilesSelected}
+              onFileSelected={handleFileSelected}
               onError={(err) => setErrorMessage(err)}
               isProcessing={isSubmitting}
             />
           ) : (
-            <BatchQueuePreview
-              filesList={filesList}
-              activeIndex={activeFileIndex}
-              onSelectIndex={(idx) => setActiveFileIndex(idx)}
-              onRemoveIndex={handleRemoveIndex}
-              onClearAll={handleClearAll}
-              onAddMoreClick={() => fileInputHiddenRef.current?.click()}
-            />
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-geo-700 bg-geo-950/60 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">{activeFileInfo.filename}</p>
+                <p className="mt-0.5 text-[11px] font-mono text-slate-400">{activeFileInfo.formattedSize} · {activeFileInfo.width} × {activeFileInfo.height} px</p>
+              </div>
+              <button type="button" onClick={handleClearImage} className="shrink-0 rounded-lg border border-geo-700 px-3 py-1.5 text-xs text-slate-300 hover:border-rose-500 hover:text-rose-300 transition-colors">
+                Remove image
+              </button>
+            </div>
           )}
         </div>
 
@@ -402,7 +227,7 @@ export default function NewAnalysis() {
               </p>
               <div className="mt-3 pt-2 border-t border-geo-700/40 flex items-center space-x-1.5 text-[10px] font-mono text-amber-400">
                 <HelpCircle className="w-3.5 h-3.5" />
-                <span>Ideal for monocular height and batch workflows</span>
+                <span>Ideal for monocular terrain analysis</span>
               </div>
             </div>
 
@@ -468,7 +293,7 @@ export default function NewAnalysis() {
             <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-mono">
               3
             </span>
-            <span>3. Project Metadata & Batch Details</span>
+            <span>3. Project Metadata</span>
           </div>
 
           <div className="space-y-3">
@@ -511,18 +336,6 @@ export default function NewAnalysis() {
           </button>
 
           <div className="flex items-center space-x-3">
-            {filesList.length > 1 && (
-              <button
-                type="button"
-                onClick={handleStartBatchPipeline}
-                disabled={isSubmitting}
-                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-900/40 transition-all"
-              >
-                <Layers className="w-4 h-4" />
-                <span>Batch Process All ({filesList.length} images)</span>
-              </button>
-            )}
-
             <button
               type="submit"
               disabled={filesList.length === 0 || isSubmitting || (analysisMode === 'calibrated' && !referenceDemFile)}
@@ -532,21 +345,12 @@ export default function NewAnalysis() {
                   : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/40'
               }`}
             >
-              <span>{isSubmitting ? 'Creating Project…' : filesList.length > 1 ? 'Analyze Selected in Workspace' : 'Run Analysis in Workspace'}</span>
+              <span>{isSubmitting ? 'Creating Project…' : 'Run Analysis in Workspace'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </form>
-
-      {/* Real-time Batch Progress Modal */}
-      <BatchProcessingModal
-        isOpen={isBatchModalOpen}
-        queue={batchQueue}
-        currentIndex={currentBatchIndex}
-        isFinished={isBatchFinished}
-        onClose={() => setIsBatchModalOpen(false)}
-      />
     </div>
   );
 }
