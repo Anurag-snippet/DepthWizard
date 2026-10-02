@@ -1,26 +1,38 @@
 import axios from 'axios';
+import FormData from 'form-data';
 import { config } from '../config/index.js';
 
 export class AiServiceClient {
   constructor() {
     this.client = axios.create({
       baseURL: config.aiServiceUrl,
-      timeout: 60000,
+      timeout: 120000,
     });
   }
 
   async checkHealth() {
     try {
-      const response = await this.client.get('/health');
+      const response = await this.client.get('/api/inference/health');
       return { success: true, data: response.data };
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
 
-  async estimateDepth(imagePath, options = {}) {
-    // Phase 3 placeholder
-    throw new Error('Depth estimation pipeline not yet wired. Scheduled for Phase 3.');
+  async estimateDepth(imageBuffer, filename, colormap = 'turbo') {
+    const formData = new FormData();
+    formData.append('image', imageBuffer, { filename: filename || 'image.png' });
+
+    const response = await this.client.post(
+      `/api/inference/depth?colormap=${encodeURIComponent(colormap)}`,
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(),
+        },
+      }
+    );
+    return response.data;
   }
 }
 

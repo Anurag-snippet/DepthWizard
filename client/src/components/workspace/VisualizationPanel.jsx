@@ -1,33 +1,32 @@
-import { Layers, Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
+import { useState } from 'react';
+import { Layers, Maximize2, ZoomIn, ZoomOut, Loader2 } from 'lucide-react';
 
 export default function VisualizationPanel({
   title,
   subtitle,
   imageSrc,
-  colormap = 'viridis',
+  colormap = 'turbo',
   onColormapChange,
   showColormapSelector = false,
   isMetric = false,
   badgeText,
   emptyMessage,
   elevationRange,
+  isLoading = false,
 }) {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isFit, setIsFit] = useState(true);
 
   const colormapOptions = [
+    { id: 'turbo',     label: 'Turbo (Vivid)' },
+    { id: 'viridis',   label: 'Viridis (Scientific)' },
+    { id: 'inferno',   label: 'Inferno' },
     { id: 'grayscale', label: 'Grayscale' },
-    { id: 'viridis', label: 'Viridis (Scientific)' },
-    { id: 'inferno', label: 'Inferno' },
-    { id: 'terrain', label: 'Terrain Hypsometric' },
   ];
 
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(z + 0.25, 3));
+  const handleZoomIn  = () => setZoomLevel((z) => Math.min(z + 0.25, 3));
   const handleZoomOut = () => setZoomLevel((z) => Math.max(z - 0.25, 0.5));
-  const handleResetZoom = () => {
-    setZoomLevel(1);
-    setIsFit(true);
-  };
+  const handleResetZoom = () => { setZoomLevel(1); setIsFit(true); };
 
   return (
     <div className="bg-geo-850/90 border border-geo-700/70 rounded-xl overflow-hidden shadow-geo-card flex flex-col h-full">
@@ -58,9 +57,7 @@ export default function VisualizationPanel({
               className="bg-geo-950 text-slate-300 text-[11px] font-mono rounded px-2 py-1 border border-geo-700/80 focus:outline-none focus:border-blue-500 mr-2"
             >
               {colormapOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
             </select>
           )}
@@ -91,7 +88,12 @@ export default function VisualizationPanel({
 
       {/* Viewport Area */}
       <div className="flex-1 bg-geo-950/80 min-h-[320px] relative overflow-hidden flex items-center justify-center p-4">
-        {imageSrc ? (
+        {isLoading ? (
+          <div className="text-center p-8 space-y-3">
+            <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
+            <p className="text-xs text-slate-400 font-mono">Running TensorFlow inference…</p>
+          </div>
+        ) : imageSrc ? (
           <div
             className="transition-transform duration-100 flex items-center justify-center max-w-full max-h-full"
             style={{ transform: `scale(${zoomLevel})` }}
@@ -111,12 +113,12 @@ export default function VisualizationPanel({
           </div>
         )}
 
-        {/* Legend / Range bar at bottom */}
+        {/* Range bar at bottom */}
         {elevationRange && (
           <div className="absolute bottom-2 left-4 right-4 bg-geo-900/90 backdrop-blur-sm border border-geo-700/60 rounded px-3 py-1.5 flex items-center justify-between text-[10px] font-mono text-slate-300">
-            <span>Min: {elevationRange.min} {isMetric ? 'm' : ''}</span>
+            <span>Min: {elevationRange.min}{isMetric ? ' m' : ''}</span>
             <div className="h-2 flex-1 mx-4 rounded-full bg-gradient-to-r from-blue-900 via-emerald-600 to-amber-400 border border-slate-700/50" />
-            <span>Max: {elevationRange.max} {isMetric ? 'm' : ''}</span>
+            <span>Max: {elevationRange.max}{isMetric ? ' m' : ''}</span>
           </div>
         )}
       </div>

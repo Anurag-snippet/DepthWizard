@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { 
-  Compass, 
-  ArrowLeft, 
-  Play, 
-  Pause
+import {
+  Compass,
+  ArrowLeft,
+  Play,
+  Pause,
+  Sliders,
 } from 'lucide-react';
 import TerrainCanvas from '../components/canvas3d/TerrainCanvas';
 import ElevationLegend from '../components/canvas3d/ElevationLegend';
@@ -18,7 +19,7 @@ export default function TerrainViewer() {
 
   const [project, setProject] = useState(null);
   const [exaggeration, setExaggeration] = useState(1.5);
-  const [shadingMode, setShadingMode] = useState('textured'); // 'textured' | 'wireframe' | 'elevation' | 'shaded'
+  const [shadingMode, setShadingMode] = useState('textured'); // 'textured' | 'wireframe' | 'elevation'
   const [isFlythrough, setIsFlythrough] = useState(false);
 
   useEffect(() => {
@@ -49,9 +50,13 @@ export default function TerrainViewer() {
 
   const isMetric = project.mode === 'calibrated';
 
+  // Use grayscale depth for displacement (more precise than colorized preview).
+  // Fall back to the coloured depth map if grayscale was not saved.
+  const depthDisplacementUrl = project.grayscaleDepthSrc || project.depthMapSrc || project.imageSrc;
+
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden bg-geo-950">
-      {/* Top 3D Viewer Toolbar */}
+      {/* ── Top 3D Viewer Toolbar ── */}
       <div className="h-12 border-b border-geo-700/60 bg-geo-900/90 px-6 flex items-center justify-between z-10 flex-shrink-0">
         <div className="flex items-center space-x-4">
           <Link
@@ -78,35 +83,24 @@ export default function TerrainViewer() {
           </div>
         </div>
 
-        {/* Shading mode selector */}
+        {/* Controls */}
         <div className="flex items-center space-x-3 text-xs">
+          {/* Shading mode */}
           <div className="hidden md:flex items-center space-x-1 bg-geo-850 p-1 rounded-lg border border-geo-700/60">
-            <button
-              onClick={() => setShadingMode('textured')}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                shadingMode === 'textured' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Textured
-            </button>
-            <button
-              onClick={() => setShadingMode('elevation')}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                shadingMode === 'elevation' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Hypsometric
-            </button>
-            <button
-              onClick={() => setShadingMode('wireframe')}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                shadingMode === 'wireframe' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Wireframe
-            </button>
+            {['textured', 'elevation', 'wireframe'].map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setShadingMode(mode)}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium capitalize transition-colors ${
+                  shadingMode === mode ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {mode === 'elevation' ? 'Hypsometric' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </button>
+            ))}
           </div>
 
+          {/* Flythrough toggle */}
           <button
             onClick={() => setIsFlythrough(!isFlythrough)}
             className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -121,22 +115,22 @@ export default function TerrainViewer() {
         </div>
       </div>
 
-      {/* Main 3D Canvas Area */}
+      {/* ── Main 3D Canvas Area ── */}
       <div className="flex-1 relative overflow-hidden">
         <TerrainCanvas
           textureUrl={project.imageSrc}
-          depthUrl={project.depthMapSrc || project.imageSrc}
+          depthUrl={depthDisplacementUrl}
           exaggeration={exaggeration}
           shadingMode={shadingMode}
           isFlythrough={isFlythrough}
           isMetric={isMetric}
-          minElev={project.metadata?.minElevationMeters || 0}
-          maxElev={project.metadata?.maxElevationMeters || 1000}
+          minElev={project.metadata?.minElevationMeters ?? 0}
+          maxElev={project.metadata?.maxElevationMeters ?? 1000}
         />
 
-        {/* Floating Bottom Control Deck */}
+        {/* ── Floating Bottom Control Deck ── */}
         <div className="absolute bottom-6 left-6 right-6 flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 pointer-events-none">
-          {/* Height Exaggeration Slider Control Card */}
+          {/* Exaggeration Slider */}
           <div className="bg-geo-900/90 backdrop-blur-md border border-geo-700/70 rounded-xl p-4 shadow-2xl pointer-events-auto space-y-2 w-72">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-white flex items-center space-x-1.5">
@@ -151,7 +145,7 @@ export default function TerrainViewer() {
             <input
               type="range"
               min="0.1"
-              max="4.0"
+              max="5.0"
               step="0.1"
               value={exaggeration}
               onChange={(e) => setExaggeration(parseFloat(e.target.value))}
@@ -159,17 +153,17 @@ export default function TerrainViewer() {
             />
 
             <div className="flex justify-between text-[10px] font-mono text-slate-400">
-              <span>0.1× (Subtle)</span>
-              <span>1.0× (True)</span>
-              <span>4.0× (Steep)</span>
+              <span>0.1× Subtle</span>
+              <span>1.0× True</span>
+              <span>5.0× Steep</span>
             </div>
           </div>
 
-          {/* Elevation Legend Overlay */}
+          {/* Elevation Legend */}
           <div className="pointer-events-auto">
             <ElevationLegend
-              min={isMetric ? project.metadata?.minElevationMeters || 3120 : 0}
-              max={isMetric ? project.metadata?.maxElevationMeters || 4890 : 1}
+              min={isMetric ? (project.metadata?.minElevationMeters ?? 0) : 0}
+              max={isMetric ? (project.metadata?.maxElevationMeters ?? 8849) : 1}
               isMetric={isMetric}
               unit="m"
             />
