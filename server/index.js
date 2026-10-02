@@ -14,8 +14,11 @@ if (!fs.existsSync(config.uploadDir)) {
 }
 
 // Global Middlewares
+const corsOrigin = config.isProduction
+  ? (origin, callback) => (!origin || config.allowedOrigins.includes(origin) ? callback(null, true) : callback(new Error('Origin is not allowed by CORS policy.')))
+  : true;
 app.use(cors({
-  origin: '*',
+  origin: corsOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -24,8 +27,8 @@ app.use(express.json({ limit: `${config.maxFileSizeMb}mb` }));
 app.use(express.urlencoded({ extended: true, limit: `${config.maxFileSizeMb}mb` }));
 app.use(morgan(config.nodeEnv === 'development' ? 'dev' : 'combined'));
 
-// Static serving for uploaded and processed assets
-app.use('/uploads', express.static(config.uploadDir));
+// Source uploads remain private. Public result URLs are served by the AI service
+// from its separately managed output store after successful processing.
 
 // API Routes
 app.use('/api', apiRoutes);
@@ -47,5 +50,16 @@ const server = app.listen(config.port, () => {
   console.log(`[DepthWizard Backend] Server running on http://localhost:${config.port}`);
   console.log(`[DepthWizard Backend] Configured AI Service endpoint: ${config.aiServiceUrl}`);
 });
+
+const shutdown = (signal) => {
+  console.log(`[DepthWizard Backend] ${signal} received; closing HTTP server.`);
+  server.close((error) => {
+    if (error) { console.error('[DepthWizard Backend] Shutdown error:', error); process.exitCode = 1; }
+    process.exit();
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+};
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
 
 export default app;

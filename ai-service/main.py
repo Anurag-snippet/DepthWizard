@@ -24,7 +24,7 @@ logger = logging.getLogger("depthwizard.ai")
 
 # Setup directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+OUTPUTS_DIR = os.environ.get("OUTPUTS_DIR", os.path.join(BASE_DIR, "outputs"))
 MODELS_DIR = os.path.join(BASE_DIR, "models", "weights")
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 os.makedirs(MODELS_DIR, exist_ok=True)
@@ -61,10 +61,11 @@ app = FastAPI(
 )
 
 # CORS configuration
+allowed_origins = [origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins or (["*"] if os.environ.get("ENVIRONMENT", "development") != "production" else []),
+    allow_credentials=bool(allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -84,6 +85,7 @@ def get_root():
             "metadata": "/api/v1/model/metadata"
         }
     }
+    return response
 
 @app.get("/health")
 @app.get("/api/inference/health")
@@ -229,7 +231,7 @@ async def estimate_depth(
     grayscale_url = f"/outputs/{result['files']['grayscale_png_filename']}"
     raw_npy_url = f"/outputs/{result['files']['raw_npy_filename']}"
 
-    return {
+    response = {
         "success": True,
         "processing_id": processing_id,
         "filename": image.filename,
