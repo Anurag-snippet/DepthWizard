@@ -306,7 +306,7 @@ export default function NewAnalysis() {
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="e.g., Satellite Survey - Northern Mountain Range"
-                className="w-full bg-geo-950 text-slate-100 text-sm rounded-lg px-3 py-2.5 border border-geo-700 focus:outline-none focus:border-blue-500"
+                className="w-full bg-white text-slate-900 placeholder-slate-400 text-sm rounded-lg px-3 py-2.5 border border-slate-300 focus:outline-none focus:border-blue-500"
               />
             </div>
 
@@ -319,7 +319,7 @@ export default function NewAnalysis() {
                 onChange={(e) => setProjectDescription(e.target.value)}
                 placeholder="Optional notes regarding acquisition sensor, latitude/longitude, or target terrain features..."
                 rows={2}
-                className="w-full bg-geo-950 text-slate-100 text-sm rounded-lg px-3 py-2 border border-geo-700 focus:outline-none focus:border-blue-500"
+                className="w-full bg-white text-slate-900 placeholder-slate-400 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:outline-none focus:border-blue-500"
               />
             </div>
           </div>
