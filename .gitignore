@@ -66,6 +66,7 @@ outputs/
 # AI Model Checkpoints & Large Weights
 ai-service/models/weights/*
 !ai-service/models/weights/.gitkeep
+!ai-service/models/weights/midas_v21_small.tflite
 
 # Logs
 *.log

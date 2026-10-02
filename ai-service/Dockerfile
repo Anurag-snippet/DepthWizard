@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgdal-dev gda
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
+RUN test -s /app/models/weights/midas_v21_small.tflite
 ENV PORT=8000 OUTPUTS_DIR=/data/outputs
 VOLUME ["/data"]
 EXPOSE 8000
