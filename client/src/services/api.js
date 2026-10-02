@@ -5,8 +5,8 @@
  */
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const AI_BASE_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:5000/api';
+const AI_BASE_URL = import.meta.env?.VITE_AI_URL || 'http://localhost:8000';
 
 /** Resolve an AI static-output path using the environment-configured service URL. */
 export const resolveAiUrl = (relativePath) => {
@@ -149,20 +149,61 @@ export const getProjectResults = async (projectId) =>
   (await apiClient.get(`/projects/${encodeURIComponent(projectId)}/results`, { timeout: 15000 })).data;
 
 /**
- * Convert a base64 dataURL to a Blob suitable for FormData.
+ * Convert a base64 dataURL to a Blob safely.
  * @param {string} dataUrl - data:image/png;base64,...
- * @returns {Blob}
+ * @returns {Blob|null}
  */
 export const dataUrlToBlob = (dataUrl) => {
-  const [header, base64] = dataUrl.split(',');
-  const mimeMatch = header.match(/data:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
-  const binary = atob(base64);
-  const array = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    array[i] = binary.charCodeAt(i);
+  if (!dataUrl) return null;
+  if (dataUrl instanceof Blob) return dataUrl;
+  if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+    try {
+      const commaIndex = dataUrl.indexOf(',');
+      if (commaIndex !== -1) {
+        const header = dataUrl.slice(0, commaIndex);
+        const base64 = dataUrl.slice(commaIndex + 1);
+        // A data URL can also contain percent-encoded text. Only decode values
+        // explicitly labelled as base64; calling atob on a path or plain text
+        // is what caused the sample-project failure.
+        if (!/;base64$/i.test(header)) return null;
+        const mimeMatch = header.match(/data:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const binary = atob(base64);
+        const array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          array[i] = binary.charCodeAt(i);
+        }
+        return new Blob([array], { type: mime });
+      }
+    } catch (e) {
+      console.warn('[DepthWizard] Failed to parse data URL:', e.message);
+    }
   }
-  return new Blob([array], { type: mime });
+  return null;
+};
+
+/**
+ * Universal image source loader: converts Data URLs, Object URLs,
+ * relative sample paths (/samples/...), and remote HTTP URLs into a Blob.
+ */
+export const imageSourceToBlob = async (imageSrc) => {
+  if (!imageSrc) throw new Error('No source image found in project.');
+  if (imageSrc instanceof Blob) return imageSrc;
+
+  // Try decoding base64 if it's a data URL
+  const dataBlob = dataUrlToBlob(imageSrc);
+  if (dataBlob) return dataBlob;
+
+  if (typeof imageSrc === 'string' && imageSrc.startsWith('data:') && /;base64,/i.test(imageSrc)) {
+    throw new Error('The source image data is invalid or corrupted. Please choose the image again.');
+  }
+
+  // Otherwise fetch the resource (handles /samples/..., blob:..., https://...)
+  const response = await fetch(imageSrc);
+  if (!response.ok) {
+    throw new Error(`Failed to load source image at ${imageSrc} (${response.status} ${response.statusText})`);
+  }
+  return await response.blob();
 };
 
 /**

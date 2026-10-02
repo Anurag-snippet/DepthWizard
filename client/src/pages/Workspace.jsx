@@ -8,7 +8,7 @@ import VisualizationPanel from '../components/workspace/VisualizationPanel';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import EmptyState from '../components/common/EmptyState';
 import { projectStore } from '../services/projectStore';
-import { runDepthInference, dataUrlToBlob, startProjectProcessing, getProjectStatus, getProjectResults, resolveAiUrl } from '../services/api';
+import { runDepthInference, imageSourceToBlob, startProjectProcessing, getProjectStatus, getProjectResults, resolveAiUrl } from '../services/api';
 
 export default function Workspace() {
   const [searchParams] = useSearchParams();
@@ -94,8 +94,8 @@ export default function Workspace() {
         if (status?.status !== 'completed') throw new Error('Inference timed out while waiting for the processing job.');
         result = (await getProjectResults(project.backendProjectId)).result;
       } else {
-        // Compatibility path for projects created before server-backed uploads.
-        const imageBlob = dataUrlToBlob(project.imageSrc);
+        // Compatibility path for projects created before server-backed uploads or pre-bundled samples.
+        const imageBlob = await imageSourceToBlob(project.imageSrc);
         result = await runDepthInference(imageBlob, project.metadata?.filename || 'image.png', selectedColormap);
       }
 
