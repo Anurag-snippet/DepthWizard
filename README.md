@@ -1,6 +1,8 @@
 # DepthWizard — Single-View Height Estimation and 3D Flythrough
 ### Smart India Hackathon Prototype (SIH 26175)
 
+**Live prototype:** [Open DepthWizard](https://depthwizard-2tf3.onrender.com)
+
 DepthWizard is an advanced scientific geospatial web application engineered to accept a single satellite or aerial image, predict relative depth maps using a pretrained monocular depth estimation model implemented in **TensorFlow/Keras**, calibrate the predictions against reference elevation data (Digital Elevation Models or Ground Control Points), generate a 3D terrain mesh, and enable users to explore the landscape through an interactive flythrough.
 
 ---
