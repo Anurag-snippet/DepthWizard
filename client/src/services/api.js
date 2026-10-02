@@ -8,6 +8,12 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const AI_BASE_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000';
 
+/** Resolve an AI static-output path using the environment-configured service URL. */
+export const resolveAiUrl = (relativePath) => {
+  if (!relativePath || relativePath.startsWith('http')) return relativePath || null;
+  return `${AI_BASE_URL}${relativePath}`;
+};
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
@@ -57,6 +63,21 @@ export const runDepthInference = async (imageFile, filename, colormap = 'turbo')
   );
   return res.data;
 };
+
+/** Create a server-backed project and securely upload its source image. */
+export const createProject = async ({ imageFile, referenceDemFile, name, description }) => {
+  const formData = new FormData();
+  formData.append('image', imageFile, imageFile.name || 'image.png');
+  formData.append('name', name || 'Untitled Geospatial Project');
+  formData.append('description', description || '');
+  if (referenceDemFile) formData.append('referenceDem', referenceDemFile, referenceDemFile.name);
+  const res = await axios.post(`${API_BASE_URL}/projects`, formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 });
+  return res.data.project;
+};
+
+export const startProjectProcessing = async (projectId, colormap) => (await apiClient.post(`/projects/${encodeURIComponent(projectId)}/process`, { colormap }, { timeout: 15000 })).data;
+export const getProjectStatus = async (projectId) => (await apiClient.get(`/projects/${encodeURIComponent(projectId)}/status`, { timeout: 10000 })).data;
+export const getProjectResults = async (projectId) => (await apiClient.get(`/projects/${encodeURIComponent(projectId)}/results`, { timeout: 15000 })).data;
 
 /**
  * Convert a base64 dataURL to a Blob suitable for FormData.

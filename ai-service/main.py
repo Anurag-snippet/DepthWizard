@@ -6,6 +6,7 @@ import os
 import sys
 import uuid
 import logging
+import json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, status
 from fastapi.responses import JSONResponse, FileResponse
@@ -31,6 +32,8 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 # Import model engine modules
 from src.model_engine import DepthEstimationEngine, MODEL_METADATA
 from src.preprocessing import PreprocessingError
+from src.postprocessing import normalize_disparity
+from src.geospatial import CalibrationError, read_raster_metadata, align_reference_dem, calibrate_with_dem, calibrate_with_gcps, save_calibrated_outputs
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -121,6 +124,8 @@ def get_model_metadata():
 @app.post("/api/inference/depth")
 async def estimate_depth(
     image: UploadFile = File(..., description="Satellite or aerial image crop (PNG, JPG, GeoTIFF)"),
+    reference_dem: Optional[UploadFile] = File(None, description="Optional reference DEM GeoTIFF for guarded metric calibration"),
+    gcp_json: Optional[str] = Form(None, description="Optional JSON array of {row, col, elevation_m} ground-control points"),
     colormap: str = Query("turbo", description="Color map for visualization: turbo, viridis, inferno, grayscale")
 ):
     """
@@ -149,7 +154,14 @@ async def estimate_depth(
             detail="Uploaded file is empty (0 bytes)."
         )
 
-    # 2. Run inference pipeline
+    # 2. Read reference only when calibration was explicitly requested.
+    reference_bytes = None
+    if reference_dem is not None:
+        reference_bytes = await reference_dem.read()
+        if not reference_bytes:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reference DEM upload is empty.")
+
+    # 3. Run inference pipeline
     processing_id = f"proc_{uuid.uuid4().hex[:12]}"
     try:
         result = engine.run_inference(
@@ -171,7 +183,46 @@ async def estimate_depth(
             detail=f"Internal inference failure: {e}"
         )
 
-    # 3. Construct response matching required API specification
+    # 4. Calibrate only when source and reference establish an actual spatial relationship.
+    calibration = {"status": "not_requested", "is_metric": False, "warning": "Relative depth is unitless; upload a spatially aligned reference DEM to request calibration."}
+    try:
+        if reference_bytes is not None:
+            source_metadata = read_raster_metadata(image_bytes)
+            if source_metadata is None or not source_metadata.georeferenced:
+                raise CalibrationError("The input image has no CRS/geotransform. JPG/PNG cannot be spatially calibrated from a DEM without additional control information.")
+            aligned_dem = align_reference_dem(reference_bytes, source_metadata)
+            elevation, calibration_info = calibrate_with_dem(normalize_disparity(result["raw_disparity"]), aligned_dem)
+            calibrated_files = save_calibrated_outputs(elevation, source_metadata, OUTPUTS_DIR, processing_id, colormap)
+            calibration = {
+                "status": "calibrated", "is_metric": True, "units": "metres", "method": calibration_info["method"],
+                "metrics": calibration_info["metrics"], "valid_samples": calibration_info["valid_samples"],
+                "elevation_geotiff_url": f"/outputs/{calibrated_files['elevation_geotiff_filename']}",
+                "elevation_npy_url": f"/outputs/{calibrated_files['elevation_npy_filename']}",
+                "elevation_preview_url": f"/outputs/{calibrated_files['elevation_preview_filename']}",
+                "hillshade_url": f"/outputs/{calibrated_files['hillshade_filename']}",
+                "min_elevation_m": calibrated_files["min_elevation_m"], "max_elevation_m": calibrated_files["max_elevation_m"],
+                "warning": "Metric values are model-to-DEM regression estimates. RMSE/MAE/correlation use spatially held-out DEM samples, not the fitting samples.",
+            }
+        elif gcp_json:
+            gcps = json.loads(gcp_json)
+            elevation, calibration_info = calibrate_with_gcps(normalize_disparity(result["raw_disparity"]), gcps)
+            source_metadata = read_raster_metadata(image_bytes)
+            if source_metadata and source_metadata.georeferenced:
+                calibrated_files = save_calibrated_outputs(elevation, source_metadata, OUTPUTS_DIR, processing_id, colormap)
+                elevation_preview_url = f"/outputs/{calibrated_files['elevation_preview_filename']}"
+                elevation_npy_url = f"/outputs/{calibrated_files['elevation_npy_filename']}"
+                elevation_geotiff_url = f"/outputs/{calibrated_files['elevation_geotiff_filename']}"
+                hillshade_url = f"/outputs/{calibrated_files['hillshade_filename']}"
+            else:
+                raise CalibrationError("GCP calibration needs a georeferenced source GeoTIFF to write a metric elevation raster.")
+            calibration = {"status": "calibrated", "is_metric": True, "units": "metres", "method": calibration_info["method"], "metrics": calibration_info["metrics"], "valid_samples": calibration_info["valid_samples"], "elevation_geotiff_url": elevation_geotiff_url, "elevation_npy_url": elevation_npy_url, "elevation_preview_url": elevation_preview_url, "hillshade_url": hillshade_url, "min_elevation_m": calibrated_files["min_elevation_m"], "max_elevation_m": calibrated_files["max_elevation_m"], "warning": "Metric values are GCP-regression estimates; metrics use held-out GCPs only."}
+    except CalibrationError as calibration_error:
+        calibration = {"status": "unavailable", "is_metric": False, "warning": str(calibration_error)}
+    except Exception:
+        logger.exception("Calibration failed")
+        calibration = {"status": "unavailable", "is_metric": False, "warning": "Calibration could not be completed; relative depth remains the only output."}
+
+    # 5. Construct response matching required API specification
     host_base = "" # relative URL paths for frontend consumption
     preview_url = f"/outputs/{result['files']['preview_png_filename']}"
     grayscale_url = f"/outputs/{result['files']['grayscale_png_filename']}"
@@ -184,16 +235,19 @@ async def estimate_depth(
         "prediction_dimensions": result["prediction_dimensions"],
         "depth_map_preview_url": preview_url,
         "grayscale_preview_url": grayscale_url,
-        "raw_output_location": result["files"]["raw_npy_path"],
         "raw_npy_download_url": raw_npy_url,
         "inference_duration_ms": result["inference_duration_ms"],
         "total_processing_duration_ms": result["total_processing_duration_ms"],
         "model_name": result["model_info"]["model_name"],
         "model_version": "2.1-small",
         "output_type": result["output_type"],
-        "is_metric": result["is_metric"],
+        "is_metric": calibration["is_metric"],
         "scientific_notice": result["model_info"]["metric_notice"],
-        "statistics": result["statistics"]
+        "statistics": result["statistics"],
+        "source_geospatial_metadata": {
+            "available": bool(read_raster_metadata(image_bytes) and read_raster_metadata(image_bytes).georeferenced),
+        },
+        "calibration": calibration,
     }
 
 if __name__ == "__main__":

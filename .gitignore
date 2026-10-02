@@ -54,6 +54,7 @@ ai-service/.env
 # Uploads & Generated Geospatial Artifacts
 server/uploads/*
 !server/uploads/.gitkeep
+server/data/projects.json
 generated/
 outputs/
 *.tif

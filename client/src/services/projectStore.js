@@ -112,10 +112,10 @@ export const projectStore = {
       name: 'Sample Alpine Ridge (Himalayas Crop)',
       description: 'Pre-bundled demo optical satellite crop for UI testing and layout validation.',
       isSample: true,
-      mode: 'calibrated',
+      mode: 'relative',
       createdAt: new Date().toISOString(),
       status: 'ready',
-      stage: '3d_ready',
+      stage: 'depth_ready',
       referenceDemName: 'Copernicus 30m DEM (Sample)',
       metadata: {
         filename: 'alpine_ridge_optical.png',
@@ -125,12 +125,10 @@ export const projectStore = {
         height: 512,
         channels: 3,
         format: 'PNG',
-        minElevationMeters: 3120,
-        maxElevationMeters: 4890,
       },
       imageSrc: '/samples/alpine_ridge_optical.png',
       depthMapSrc: '/samples/alpine_ridge_depth.png',
-      elevationMapSrc: '/samples/alpine_ridge_depth.png',
+      elevationMapSrc: null,
     };
     return this.saveProject(sample);
   },

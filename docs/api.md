@@ -1,62 +1,35 @@
-# DepthWizard API Specification (SIH 26175)
+# DepthWizard API
 
-## 1. Backend Gateway (Port 5000)
+Base URL: `http://localhost:5000/api`. The client reads it from `VITE_API_URL`; Express reads the AI service from `AI_SERVICE_URL`.
 
-### `GET /api/health`
-Returns health telemetry for Node.js Express server and downstream connectivity to the Python AI service.
+## Project and processing API
 
-**Sample Response:**
+`POST /projects` accepts `multipart/form-data`: required `image`, optional `name` and `description`. It validates PNG, JPEG, TIFF, and GeoTIFF extensions, applies `MAX_UPLOAD_SIZE_MB`, writes a UUID-named file under `server/uploads`, and responds `201` with a project in `uploaded` status. Internal source paths are never returned.
+
+`GET /projects` lists metadata and processing history. `GET /projects/:id` returns one project. Project identifiers accept only letters, digits, `_`, and `-`.
+
+`POST /projects/:id/process` queues the source image for FastAPI inference and responds `202` immediately:
+
 ```json
-{
-  "success": true,
-  "service": "DepthWizard Backend Gateway",
-  "version": "1.0.0-sih26175",
-  "status": "healthy",
-  "timestamp": "2026-10-02T09:50:00.000Z",
-  "environment": "development",
-  "port": 5000,
-  "aiService": {
-    "url": "http://localhost:8000",
-    "status": "connected"
-  }
-}
+{ "success": true, "processing": { "id": "proc_...", "status": "queued" } }
 ```
 
-### `GET /api/projects`
-Retrieves stored project sessions and processing history.
+Jobs transition through `queued`, `processing`, `completed`, or `failed`. Completed results come directly from FastAPI and include real preview and raw NumPy output URLs; server filesystem paths are never exposed.
 
-### `POST /api/projects`
-Creates a new project session.
+`GET /projects/:id/status` returns the current state. `GET /projects/:id/results` returns completed output, or `409 RESULTS_NOT_READY` before completion. `DELETE /projects/:id` removes metadata and only deletes a source file resolved directly within the configured upload directory; it returns `204`.
 
----
+## Direct inference and health
 
-## 2. AI Microservice (Port 8000)
+`POST /inference/depth?colormap=turbo` remains for legacy clients; it uses Multer before proxying to FastAPI. `GET /inference/health` proxies AI health. `GET /health` reports backend/downstream health.
 
-### `GET /health`
-Returns diagnostic health metrics for Python, TensorFlow, Keras, and available hardware accelerators (CPU/GPU).
+`POST /projects` also accepts an optional `referenceDem` GeoTIFF and `gcpJson` (pixel-referenced GCP records). These are forwarded as `reference_dem` and `gcp_json` to FastAPI. Results expose `calibration.status`, warning text, held-out RMSE/MAE/correlation, and georeferenced elevation/hillshade URLs only when calibration is supported. See [calibration.md](calibration.md).
 
-**Sample Response:**
-```json
-{
-  "status": "healthy",
-  "service": "ai-service",
-  "python_version": "3.13.15",
-  "tensorflow_version": "2.21.0",
-  "keras_version": "3.15.1",
-  "numpy_version": "2.5.2",
-  "gpu_accelerated": false,
-  "physical_devices": {
-    "gpu_count": 0,
-    "cpu_count": 1,
-    "devices": ["/physical_device:CPU:0"]
-  },
-  "framework_verified": true
-}
-```
+Inference results include `raw_npy_download_url` for the real float32 relative-disparity raster. Supported metric calibration additionally returns `calibration.elevation_npy_url`, a real float32 elevation raster for the 3D viewer. See [terrain-viewer.md](terrain-viewer.md).
 
-### `GET /api/v1/model/metadata`
-Returns information regarding the neural architecture and output representation.
+Errors use `{ "success": false, "error": { "code", "message", "status", "timestamp", "path" } }`; oversized uploads return `413`.
 
-### `POST /api/v1/depth/estimate`
-Placeholder for TensorFlow monocular depth estimation pipeline (Scheduled for Phase 3).
-Returns `HTTP 501 Not Implemented` with SIH compliance notice prohibiting fabricated predictions.
+## Persistence and verification
+
+MongoDB is not currently a runtime dependency. The documented development fallback is `server/data/projects.json`, with source images in `server/uploads`; `server/src/services/projectStore.js` is the replacement seam for a Mongo repository.
+
+Start FastAPI (8000), Express (5000), and Vite (5173). Upload an actual image through the client, open its workspace, and choose **Run Inference** to see the real queued/processing/completed state. Service failures are returned to the UI for retry.

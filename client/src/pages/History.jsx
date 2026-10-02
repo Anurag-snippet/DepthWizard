@@ -18,6 +18,9 @@ export default function History() {
   const [projects, setProjects] = useState([]);
   const [deleteCandidate, setDeleteCandidate] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [query, setQuery] = useState('');
+  const [modeFilter, setModeFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('newest');
 
   const loadProjects = () => {
     setProjects(projectStore.getProjects());
@@ -37,9 +40,13 @@ export default function History() {
     setDeleteCandidate(null);
     loadProjects();
   };
+  const visibleProjects = projects.filter((project) => {
+    const nameMatch = project.name?.toLowerCase().includes(query.toLowerCase()) || project.metadata?.filename?.toLowerCase().includes(query.toLowerCase());
+    return nameMatch && (modeFilter === 'all' || project.mode === modeFilter);
+  }).sort((a, b) => sortOrder === 'newest' ? new Date(b.createdAt) - new Date(a.createdAt) : new Date(a.createdAt) - new Date(b.createdAt));
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-6">
+    <div className="p-5 md:p-8 max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -68,6 +75,12 @@ export default function History() {
         />
       )}
 
+      {projects.length > 0 && <div className="flex flex-col sm:flex-row gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        <select value={modeFilter} onChange={(event) => setModeFilter(event.target.value)} aria-label="Filter by output mode" className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"><option value="all">All modes</option><option value="relative">Relative depth</option><option value="calibrated">Calibrated metric</option></select>
+        <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} aria-label="Sort projects" className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select>
+      </div>}
+
       {/* Projects Table / Cards */}
       {projects.length === 0 ? (
         <EmptyState
@@ -77,11 +90,11 @@ export default function History() {
           actionLabel="Start New Analysis"
           onAction={() => navigate('/new-analysis')}
         />
-      ) : (
-        <div className="bg-geo-900/80 border border-geo-700/70 rounded-xl overflow-hidden shadow-geo-card">
+      ) : visibleProjects.length === 0 ? <EmptyState icon={HistoryIcon} title="No projects match those filters" description="Try another search term or output-mode filter." /> : (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-geo-850/90 text-slate-400 uppercase font-mono text-[11px] border-b border-geo-700/60">
+              <thead className="bg-slate-50 text-slate-600 uppercase font-mono text-[11px] border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3.5 font-semibold">Project Details</th>
                   <th className="px-4 py-3.5 font-semibold">Mode</th>
@@ -91,18 +104,16 @@ export default function History() {
                   <th className="px-6 py-3.5 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-geo-700/40 text-slate-300">
-                {projects.map((p) => {
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {visibleProjects.map((p) => {
                   const isMetric = p.mode === 'calibrated';
                   return (
-                    <tr key={p.id} className="hover:bg-geo-850/50 transition-colors">
+                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 rounded-lg bg-geo-950 border border-geo-700/60 flex items-center justify-center text-blue-400 flex-shrink-0">
-                            <FileImage className="w-4 h-4" />
-                          </div>
+                          <div className="w-10 h-8 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center text-blue-500 flex-shrink-0">{p.imageSrc ? <img src={p.imageSrc} alt="" className="w-full h-full object-cover" /> : <FileImage className="w-4 h-4" />}</div>
                           <div>
-                            <div className="font-semibold text-white hover:text-blue-300 transition-colors cursor-pointer truncate max-w-xs" onClick={() => navigate(`/workspace?id=${p.id}`)}>
+                            <div className="font-semibold text-slate-900 hover:text-blue-700 transition-colors cursor-pointer truncate max-w-xs" onClick={() => navigate(`/workspace?id=${p.id}`)}>
                               {p.name}
                             </div>
                             <div className="text-[11px] text-slate-500 font-mono mt-0.5">

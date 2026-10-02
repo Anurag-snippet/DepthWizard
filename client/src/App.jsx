@@ -29,7 +29,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="h-screen w-screen bg-geo-950 text-slate-100 flex flex-col font-sans geo-grid-pattern selection:bg-blue-600 selection:text-white overflow-hidden">
+      <div className="h-screen w-screen bg-geo-950 text-slate-800 flex flex-col font-sans geo-grid-pattern selection:bg-blue-600 selection:text-white overflow-hidden">
         {/* Top Geospatial Navbar */}
         <Navbar 
           backendStatus={backendHealth.online ? 'online' : 'offline'}

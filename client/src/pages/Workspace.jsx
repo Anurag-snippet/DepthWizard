@@ -4,33 +4,11 @@ import {
   Compass, ArrowRight, Play, AlertTriangle,
   CheckCircle2, Loader2, RefreshCw, FileImage,
 } from 'lucide-react';
-import ProcessingStatus from '../components/workspace/ProcessingStatus';
 import VisualizationPanel from '../components/workspace/VisualizationPanel';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import EmptyState from '../components/common/EmptyState';
 import { projectStore } from '../services/projectStore';
-import { runDepthInference, dataUrlToBlob } from '../services/api';
-
-// ─── DEM Reference bounds (metres AMSL) ──────────────────────────────────────
-// In a production system these would be fetched from an actual DEM API using the
-// image footprint coordinates. For SIH prototype purposes we use authoritative
-// typical bounds per dataset — clearly documented and not fabricated.
-const DEM_BOUNDS = {
-  copernicus: { name: 'Copernicus GLO-30', minM: 0, maxM: 8849 },
-  srtm:       { name: 'SRTM 30m (NASA)',   minM: 0, maxM: 8849 },
-  alos:       { name: 'ALOS AW3D30',       minM: 0, maxM: 8849 },
-  gcp:        { name: 'Ground Control Points', minM: 0, maxM: 8849 },
-};
-
-/**
- * Converts a depth preview URL served by the AI service (port 8000) into a
- * full absolute URL the browser can display cross-origin.
- */
-const resolveAiUrl = (relativePath) => {
-  if (!relativePath) return null;
-  if (relativePath.startsWith('http')) return relativePath;
-  return `http://localhost:8000${relativePath}`;
-};
+import { runDepthInference, dataUrlToBlob, startProjectProcessing, getProjectStatus, getProjectResults, resolveAiUrl } from '../services/api';
 
 export default function Workspace() {
   const [searchParams] = useSearchParams();
@@ -84,21 +62,34 @@ export default function Workspace() {
 
   // ─── Run Inference ─────────────────────────────────────────────────────────
   const handleRunInference = useCallback(async () => {
-    if (!project?.imageSrc) return;
+    if (!project?.imageSrc && !project?.backendProjectId) return;
     setIsProcessing(true);
     setInferenceError(null);
     setCurrentStep(2);
     setStatusMessage('Preprocessing image for TensorFlow inference...');
 
     try {
-      // Step 1: Convert stored dataURL → Blob for FormData upload
       setCurrentStep(3);
       setStatusMessage('Running MiDaS v2.1 monocular depth estimation...');
 
-      const imageBlob = dataUrlToBlob(project.imageSrc);
-      const filename  = project.metadata?.filename || 'image.png';
-
-      const result = await runDepthInference(imageBlob, filename, selectedColormap);
+      let result;
+      if (project.backendProjectId) {
+        await startProjectProcessing(project.backendProjectId, selectedColormap);
+        let status;
+        for (let attempt = 0; attempt < 180; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          status = await getProjectStatus(project.backendProjectId);
+          setStatusMessage(status.processing?.status === 'queued' ? 'Inference job queued...' : 'Running MiDaS v2.1 monocular depth estimation...');
+          if (status.status === 'completed' || status.status === 'failed') break;
+        }
+        if (status?.status === 'failed') throw new Error(status.processing?.error || 'The AI service could not complete this job.');
+        if (status?.status !== 'completed') throw new Error('Inference timed out while waiting for the processing job.');
+        result = (await getProjectResults(project.backendProjectId)).result;
+      } else {
+        // Compatibility path for projects created before server-backed uploads.
+        const imageBlob = dataUrlToBlob(project.imageSrc);
+        result = await runDepthInference(imageBlob, project.metadata?.filename || 'image.png', selectedColormap);
+      }
 
       if (!result.success) {
         throw new Error(result.detail || 'Inference returned unsuccessful status');
@@ -108,29 +99,18 @@ export default function Workspace() {
       const depthPreviewUrl    = resolveAiUrl(result.depth_map_preview_url);
       const grayscalePreviewUrl = resolveAiUrl(result.grayscale_preview_url);
 
-      // Step 3: Calibration (Phase 5)
+      // The AI service permits metric output only after real DEM alignment and held-out validation.
+      const calibration = result.calibration || { status: 'not_requested', is_metric: false };
+      const hasMetricCalibration = calibration.status === 'calibrated' && calibration.is_metric;
       let elevationMapSrc = null;
-      let calibrationMeta = {};
-      const isCalibrated = project.mode === 'calibrated';
-
-      if (isCalibrated) {
+      let calibrationMeta = { calibrationStatus: calibration.status, calibrationWarning: calibration.warning || null };
+      if (project.mode === 'calibrated') {
         setCurrentStep(4);
         setStatusMessage('Applying metric elevation calibration...');
-
-        const demKey  = project.referenceDemType || 'copernicus';
-        const demInfo = DEM_BOUNDS[demKey] || DEM_BOUNDS.copernicus;
-
-        // The grayscale preview serves as the depth displacement source.
-        // Metric labels use the DEM bounds — strictly documented as reference bounds,
-        // not pixel-accurate per-point elevations (SIH compliance).
-        elevationMapSrc = depthPreviewUrl; // coloured elevation map
-        calibrationMeta = {
-          referenceDemName: demInfo.name,
-          minElevationMeters: demInfo.minM,
-          maxElevationMeters: demInfo.maxM,
-          calibrationMethod: 'linear_disparity_scaling',
-          scientificNotice: 'Relative disparity linearly scaled to DEM elevation bounds. Not pixel-accurate metric elevation.',
-        };
+        if (hasMetricCalibration) {
+          elevationMapSrc = resolveAiUrl(calibration.elevation_preview_url);
+          calibrationMeta = { ...calibrationMeta, referenceDemName: project.referenceDemFilename || 'Uploaded reference DEM', minElevationMeters: calibration.min_elevation_m, maxElevationMeters: calibration.max_elevation_m, calibrationMethod: calibration.method, calibrationMetrics: calibration.metrics, scientificNotice: calibration.warning };
+        }
       }
 
       // Step 4: Build inference stats
@@ -148,9 +128,11 @@ export default function Workspace() {
       const updatedProject = {
         ...project,
         status: 'completed',
-        stage: isCalibrated ? '3d_ready' : 'depth_ready',
+        stage: hasMetricCalibration ? '3d_ready' : 'depth_ready',
         depthMapSrc: depthPreviewUrl,          // coloured depth preview
         grayscaleDepthSrc: grayscalePreviewUrl, // for 3D displacement
+        rawDisparitySrc: resolveAiUrl(result.raw_npy_download_url),
+        elevationRawSrc: hasMetricCalibration ? resolveAiUrl(calibration.elevation_npy_url) : null,
         elevationMapSrc,
         metadata: {
           ...project.metadata,
@@ -162,11 +144,11 @@ export default function Workspace() {
       const saved = projectStore.saveProject(updatedProject);
       setProject(saved);
       setInferenceStats(stats);
-      setCurrentStep(isCalibrated ? 5 : 4);
+      setCurrentStep(hasMetricCalibration ? 5 : 4);
       setStatusMessage(
-        isCalibrated
+        hasMetricCalibration
           ? 'Pipeline complete — 3D terrain mesh ready'
-          : 'Depth map ready — relative disparity mode'
+          : calibration.status === 'unavailable' ? 'Depth map ready — metric calibration unavailable' : 'Depth map ready — relative disparity mode'
       );
     } catch (err) {
       console.error('[Workspace] Inference failed:', err);
@@ -199,11 +181,12 @@ export default function Workspace() {
   const isCalibrated = project.mode === 'calibrated';
   const hasDepth     = Boolean(project.depthMapSrc);
   const hasElevation = Boolean(project.elevationMapSrc);
+  const hasMetricCalibration = project.metadata?.calibrationStatus === 'calibrated' && hasElevation;
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden">
+    <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
       {/* ── Top Workspace Status Bar ── */}
-      <div className="h-12 border-b border-geo-700/60 bg-geo-900/90 px-6 flex items-center justify-between flex-shrink-0">
+      <div className="h-14 border-b border-geo-700 bg-white px-6 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <span className="text-xs font-bold text-white tracking-wide truncate max-w-[240px]">
@@ -214,7 +197,7 @@ export default function Workspace() {
                 ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
                 : 'bg-amber-950/60 text-amber-300 border-amber-800/40'
             }`}>
-              {isCalibrated ? 'Calibrated (Metric)' : 'Relative Disparity'}
+              {hasMetricCalibration ? 'Calibrated (Metric)' : isCalibrated ? 'Calibration Requested' : 'Relative Disparity'}
             </span>
           </div>
 
@@ -273,12 +256,9 @@ export default function Workspace() {
 
       {/* ── Main Workspace Body ── */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {/* Pipeline Stepper */}
-        <ProcessingStatus
-          currentStep={currentStep}
-          isProcessing={isProcessing}
-          statusText={statusMessage}
-        />
+        <div className={`rounded-xl border px-4 py-3 text-sm ${inferenceError ? 'bg-rose-50 border-rose-200 text-rose-700' : isProcessing ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-geo-700 text-slate-600'}`}>
+          <strong>{isProcessing ? 'Working on your terrain…' : hasDepth ? 'Your terrain result is ready' : 'Ready when you are'}</strong><span className="ml-2 text-slate-500">{statusMessage}</span>
+        </div>
 
         {/* Error alert */}
         {inferenceError && (
@@ -296,7 +276,7 @@ export default function Workspace() {
 
         {/* Inference Stats Card (shown after successful run) */}
         {inferenceStats && !inferenceError && (
-          <div className="bg-emerald-950/20 border border-emerald-700/40 rounded-xl p-4 flex flex-wrap gap-6 items-center">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-wrap gap-6 items-center">
             <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-xs font-mono text-slate-300">
               <span>Model: <strong className="text-white">{inferenceStats.modelName}</strong></span>
@@ -310,16 +290,27 @@ export default function Workspace() {
         )}
 
         {/* SIH compliance notice for calibrated mode */}
-        {isCalibrated && hasElevation && (
+        {isCalibrated && (
           <div className="bg-blue-950/20 border border-blue-700/40 rounded-xl px-4 py-3 text-[11px] text-slate-400 font-mono leading-relaxed">
             <span className="text-blue-300 font-semibold">SIH Metric Compliance: </span>
-            {project.metadata?.scientificNotice ||
-              'Elevation values derived by linear scaling of relative disparity to reference DEM bounds. Pixel-accurate metric accuracy requires survey-grade GCPs.'}
+            {project.metadata?.scientificNotice || project.metadata?.calibrationWarning || 'Metric elevation was not produced. Relative disparity remains unitless.'}
+          </div>
+        )}
+
+        {hasMetricCalibration && project.metadata?.calibrationMetrics && (
+          <div className="bg-emerald-950/20 border border-emerald-700/40 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3"><span className="text-xs font-semibold text-emerald-300">Calibration validation — spatially held-out DEM samples</span><span className="text-[10px] font-mono text-emerald-400">Estimated metres</span></div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs font-mono">
+              <span className="bg-geo-950/50 rounded-lg p-2 text-slate-400">RMSE <strong className="block text-white mt-1">{project.metadata.calibrationMetrics.rmse_m?.toFixed(2)} m</strong></span>
+              <span className="bg-geo-950/50 rounded-lg p-2 text-slate-400">MAE <strong className="block text-white mt-1">{project.metadata.calibrationMetrics.mae_m?.toFixed(2)} m</strong></span>
+              <span className="bg-geo-950/50 rounded-lg p-2 text-slate-400">Correlation <strong className="block text-white mt-1">{project.metadata.calibrationMetrics.correlation?.toFixed(3)}</strong></span>
+              <span className="bg-geo-950/50 rounded-lg p-2 text-slate-400">Held out <strong className="block text-white mt-1">{project.metadata.calibrationMetrics.sample_count} samples</strong></span>
+            </div>
           </div>
         )}
 
         {/* Primary 3-Panel Inspection Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 ${isCalibrated ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-6`}>
           {/* Panel 1: Original Optical Satellite Image */}
           <VisualizationPanel
             title="1. Optical Ingestion"
@@ -348,19 +339,19 @@ export default function Workspace() {
             isLoading={isProcessing && currentStep === 3}
           />
 
-          {/* Panel 3: Calibrated Elevation Map */}
-          <VisualizationPanel
+          {/* Metric panel only matters when the user selected metric processing. */}
+          {isCalibrated && <VisualizationPanel
             title="3. Calibrated Elevation"
             subtitle={
-              isCalibrated
+              hasMetricCalibration
                 ? `Scaled against ${project.metadata?.referenceDemName || 'Reference DEM'}`
                 : 'Uncalibrated — relative mode selected'
             }
-            imageSrc={isCalibrated ? project.elevationMapSrc : null}
-            badgeText={isCalibrated ? 'Metres AMSL' : 'Uncalibrated'}
-            isMetric={isCalibrated}
+            imageSrc={hasMetricCalibration ? project.elevationMapSrc : null}
+            badgeText={hasMetricCalibration ? 'Metres' : 'Uncalibrated'}
+            isMetric={hasMetricCalibration}
             elevationRange={
-              isCalibrated && hasElevation
+              hasMetricCalibration
                 ? {
                     min: project.metadata?.minElevationMeters ?? '0',
                     max: project.metadata?.maxElevationMeters ?? '8849',
@@ -369,10 +360,10 @@ export default function Workspace() {
             }
             emptyMessage={
               isCalibrated
-                ? 'Run inference to generate calibrated elevation map'
+                ? project.metadata?.calibrationWarning || 'Run inference with an aligned reference DEM to request metric calibration'
                 : 'Metric elevation unavailable in Relative Disparity mode'
             }
-          />
+          />}
         </div>
 
         {/* 3D Terrain Viewer Teaser Card */}

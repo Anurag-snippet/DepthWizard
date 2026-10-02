@@ -1,323 +1,49 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, PointerLockControls, useTexture } from '@react-three/drei';
 import { RotateCcw, Eye } from 'lucide-react';
+import { buildTerrainMesh } from './terrainMesh';
+import { flightPose, sampleTerrainHeight } from './terrainFlight';
 
-const GRID_RES   = 128; // vertices per side
-const PLANE_SIZE = 200; // world units
-
-/**
- * TerrainCanvas — Three.js WebGL monocular depth terrain renderer.
- *
- * Accepts a greyscale/coloured depthUrl and displaces a PlaneGeometry based on
- * the luminance value of each pixel.  Height = pixel_luminance × 35 × exaggeration.
- *
- * The textureUrl (original satellite image) is applied as the diffuse map in
- * 'textured' shading mode.
- */
-export default function TerrainCanvas({
-  textureUrl,
-  depthUrl,
-  exaggeration = 1.0,
-  shadingMode  = 'textured', // 'textured' | 'wireframe' | 'elevation'
-  isFlythrough = false,
-  isMetric     = false,
-  minElev      = 0,
-  maxElev      = 1000,
-}) {
-  const containerRef    = useRef(null);
-  const sceneRef        = useRef(null);
-  const rendererRef     = useRef(null);
-  const cameraRef       = useRef(null);
-  const controlsRef     = useRef(null);
-  const meshRef         = useRef(null);
-  const geomRef         = useRef(null);
-  const rawHeightsRef   = useRef(null); // raw luminance [0..1] per vertex
-  const animFrameIdRef  = useRef(null);
-  const flyAngleRef     = useRef(0);
-  const isFlyRef        = useRef(isFlythrough);
-  const exagRef         = useRef(exaggeration);
-
-  const [fps, setFps] = useState(60);
-
-  // ─── Main Scene Setup (runs once per textureUrl/depthUrl change) ──────────
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    // ── 1. Scene ──
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x070a12);
-    scene.fog = new THREE.FogExp2(0x070a12, 0.003);
-    sceneRef.current = scene;
-
-    // ── 2. Camera ──
-    const width  = container.clientWidth  || 800;
-    const height = container.clientHeight || 500;
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
-    camera.position.set(0, 180, 260);
-    cameraRef.current = camera;
-
-    // ── 3. Renderer ──
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
-    container.innerHTML = '';
-    container.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
-
-    // ── 4. Controls ──
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping  = true;
-    controls.dampingFactor  = 0.05;
-    controls.maxPolarAngle  = Math.PI / 2 - 0.05;
-    controls.minDistance    = 20;
-    controls.maxDistance    = 700;
-    controlsRef.current     = controls;
-
-    // ── 5. Lighting ──
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const sun = new THREE.DirectionalLight(0xfff8ee, 1.4);
-    sun.position.set(150, 250, 100);
-    scene.add(sun);
-    const fill = new THREE.DirectionalLight(0x7090b0, 0.5);
-    fill.position.set(-150, 100, -100);
-    scene.add(fill);
-
-    // ── 6. Grid ──
-    const grid = new THREE.GridHelper(260, 26, 0x1e2b45, 0x111726);
-    grid.position.y = -2;
-    scene.add(grid);
-
-    // ── 7. Terrain Geometry ──
-    const geometry = new THREE.PlaneGeometry(
-      PLANE_SIZE, PLANE_SIZE,
-      GRID_RES - 1, GRID_RES - 1
-    );
-    geometry.rotateX(-Math.PI / 2);
-    geomRef.current = geometry;
-
-    // Default procedural displacement until depth image loads
-    const pos = geometry.attributes.position;
-    const defaultHeights = new Float32Array(pos.count);
-    for (let i = 0; i < pos.count; i++) {
-      const vx = pos.getX(i);
-      const vz = pos.getZ(i);
-      const d  = Math.sqrt(vx * vx + vz * vz) / 100;
-      defaultHeights[i] = Math.max(0, 1 - d) *
-        (Math.sin(vx * 0.05) * Math.cos(vz * 0.05) * 0.5 + Math.sin(vx * 0.12) * 0.3);
-      pos.setY(i, defaultHeights[i] * 35 * exagRef.current);
+function TerrainScene({ meshData, textureUrl, exaggeration, shadingMode, navigationMode, flight, speed, clearance, isMetric, onPick, onTelemetry, onControls, onHover }) {
+  const geometry = useMemo(() => { const item = new THREE.BufferGeometry(); item.setAttribute('position', new THREE.BufferAttribute(meshData.positions.slice(), 3)); item.setAttribute('uv', new THREE.BufferAttribute(meshData.uvs.slice(), 2)); item.setIndex(new THREE.BufferAttribute(meshData.indices, 1)); item.computeVertexNormals(); return item; }, [meshData]);
+  const controlsRef = useRef(); const keys = useRef({}); const progress = useRef(0); const lastTelemetry = useRef(0); const texture = useTexture(textureUrl || '/samples/alpine_ridge_optical.png');
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(() => { const positions = geometry.attributes.position; for (let index = 0; index < meshData.baseHeights.length; index += 1) positions.setY(index, meshData.baseHeights[index] * exaggeration); positions.needsUpdate = true; geometry.computeVertexNormals(); }, [exaggeration, geometry, meshData]);
+  useEffect(() => { onControls(controlsRef.current); }, [onControls]);
+  useEffect(() => { const down = (event) => { keys.current[event.key.toLowerCase()] = true; }; const up = (event) => { keys.current[event.key.toLowerCase()] = false; }; window.addEventListener('keydown', down); window.addEventListener('keyup', up); return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); }; }, []);
+  useEffect(() => { if (flight?.restart) progress.current = 0; }, [flight?.restart]);
+  useFrame(({ camera }, delta) => {
+    if (navigationMode === 'flight' && flight?.start && flight?.end && flight.running) {
+      progress.current = Math.min(1, progress.current + delta * speed / 100);
+      const pose = flightPose(meshData, flight.start, flight.end, progress.current, clearance, exaggeration);
+      const look = flightPose(meshData, flight.start, flight.end, Math.min(1, progress.current + 0.02), clearance, exaggeration);
+      camera.position.set(pose.x, pose.y, pose.z); camera.lookAt(look.x, look.y, look.z);
+      if (performance.now() - lastTelemetry.current > 100) { lastTelemetry.current = performance.now(); onTelemetry({ x: pose.x, y: pose.y, z: pose.z, terrain: pose.terrain, progress: progress.current }); } return;
     }
-    rawHeightsRef.current = defaultHeights;
-    geometry.computeVertexNormals();
-
-    // ── 8. Material & Mesh ──
-    const textureLoader = new THREE.TextureLoader();
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x90a4ae,
-      roughness: 0.85,
-      metalness: 0.05,
-      wireframe: shadingMode === 'wireframe',
-    });
-
-    if (textureUrl && shadingMode !== 'wireframe') {
-      material.map = textureLoader.load(textureUrl, () => { material.needsUpdate = true; });
+    if (navigationMode === 'free') {
+      const direction = new THREE.Vector3(); camera.getWorldDirection(direction); direction.y = 0; direction.normalize();
+      const right = new THREE.Vector3().crossVectors(direction, camera.up).normalize(); const move = new THREE.Vector3(); const pressed = keys.current;
+      if (pressed.w || pressed.arrowup) move.add(direction); if (pressed.s || pressed.arrowdown) move.sub(direction); if (pressed.d || pressed.arrowright) move.add(right); if (pressed.a || pressed.arrowleft) move.sub(right);
+      if (pressed.r) move.y += 1; if (pressed.f) move.y -= 1;
+      if (move.lengthSq()) camera.position.add(move.normalize().multiplyScalar(speed * delta));
+      camera.position.x = THREE.MathUtils.clamp(camera.position.x, -100, 100); camera.position.z = THREE.MathUtils.clamp(camera.position.z, -100, 100);
+      const terrain = sampleTerrainHeight(meshData, camera.position.x, camera.position.z, exaggeration) ?? 0; camera.position.y = Math.max(camera.position.y, terrain + clearance);
+      if (performance.now() - lastTelemetry.current > 100) { lastTelemetry.current = performance.now(); onTelemetry({ x: camera.position.x, y: camera.position.y, z: camera.position.z, terrain, progress: null }); }
     }
+  });
+  useEffect(() => { texture.colorSpace = THREE.SRGBColorSpace; texture.needsUpdate = true; }, [texture]);
+  const textured = shadingMode === 'textured'; const orbitEnabled = navigationMode === 'orbit';
+  const readPoint = (event) => { const base = sampleTerrainHeight(meshData, event.point.x, event.point.z, 1) ?? 0; return { x: event.point.x, z: event.point.z, terrain: isMetric ? meshData.min + (base / 35) * (meshData.max - meshData.min) : base / 35 }; };
+  return <><mesh geometry={geometry} castShadow receiveShadow onClick={(event) => { event.stopPropagation(); onPick(readPoint(event)); }} onPointerMove={(event) => { event.stopPropagation(); onHover?.(readPoint(event)); }}><meshStandardMaterial map={textured ? texture : null} color={shadingMode === 'elevation' ? '#35b779' : textured ? '#ffffff' : '#4f8cff'} wireframe={shadingMode === 'wireframe'} roughness={0.9} metalness={0} side={THREE.DoubleSide} /></mesh>{flight?.start && <mesh position={[flight.start.x, sampleTerrainHeight(meshData, flight.start.x, flight.start.z, exaggeration) + 2, flight.start.z]}><sphereGeometry args={[2, 16, 16]} /><meshBasicMaterial color="#22c55e" /></mesh>}{flight?.end && <mesh position={[flight.end.x, sampleTerrainHeight(meshData, flight.end.x, flight.end.z, exaggeration) + 2, flight.end.z]}><sphereGeometry args={[2, 16, 16]} /><meshBasicMaterial color="#f97316" /></mesh>}<axesHelper args={[18]} /><OrbitControls ref={controlsRef} enableDamping enabled={orbitEnabled} minDistance={25} maxDistance={700} maxPolarAngle={Math.PI / 2 - 0.02} />{navigationMode === 'free' && <PointerLockControls />}</>;
+}
 
-    const mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
-    meshRef.current = mesh;
-
-    // ── 9. Load depth map ──
-    if (depthUrl) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = depthUrl;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width  = GRID_RES;
-        canvas.height = GRID_RES;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, GRID_RES, GRID_RES);
-        const data = ctx.getImageData(0, 0, GRID_RES, GRID_RES).data;
-
-        const p       = geomRef.current?.attributes.position;
-        const heights = new Float32Array(p.count);
-        if (!p) return;
-
-        for (let i = 0; i < p.count; i++) {
-          const px  = i * 4;
-          // Luminance from RGB
-          const lum = (data[px] * 0.299 + data[px + 1] * 0.587 + data[px + 2] * 0.114) / 255.0;
-          heights[i] = lum;
-          p.setY(i, lum * 35 * exagRef.current);
-        }
-        rawHeightsRef.current = heights;
-        p.needsUpdate = true;
-        geomRef.current.computeVertexNormals();
-      };
-      img.onerror = () => {
-        console.warn('[TerrainCanvas] Depth image failed to load:', depthUrl);
-      };
-    }
-
-    // ── 10. Animation Loop ──
-    let lastTime   = performance.now();
-    let frameCount = 0;
-
-    const animate = (time) => {
-      animFrameIdRef.current = requestAnimationFrame(animate);
-      frameCount++;
-      if (time - lastTime >= 1000) {
-        setFps(frameCount);
-        frameCount = 0;
-        lastTime   = time;
-      }
-
-      if (isFlyRef.current) {
-        flyAngleRef.current += 0.005;
-        const r = 200;
-        camera.position.x = Math.sin(flyAngleRef.current) * r;
-        camera.position.z = Math.cos(flyAngleRef.current) * r;
-        camera.position.y = 90 + Math.sin(flyAngleRef.current * 1.5) * 30;
-        camera.lookAt(0, 20, 0);
-      } else {
-        controls.update();
-      }
-
-      renderer.render(scene, camera);
-    };
-    animFrameIdRef.current = requestAnimationFrame(animate);
-
-    // ── 11. Resize Observer ──
-    const handleResize = () => {
-      if (!container || !renderer || !camera) return;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
-      if (renderer.domElement && container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
-      geometry.dispose();
-      material.dispose();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [textureUrl, depthUrl]); // Re-initialise only when URLs change
-
-  // ─── Sync isFlythrough to ref (no re-init) ──────────────────────────────
-  useEffect(() => {
-    isFlyRef.current = isFlythrough;
-    if (!isFlythrough && controlsRef.current) {
-      controlsRef.current.update();
-    }
-  }, [isFlythrough]);
-
-  // ─── Live exaggeration update (re-apply heights) ─────────────────────────
-  useEffect(() => {
-    exagRef.current = exaggeration;
-    const geom    = geomRef.current;
-    const heights = rawHeightsRef.current;
-    if (!geom || !heights) return;
-
-    const p = geom.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      p.setY(i, heights[i] * 35 * exaggeration);
-    }
-    p.needsUpdate = true;
-    geom.computeVertexNormals();
-  }, [exaggeration]);
-
-  // ─── Shading mode update ─────────────────────────────────────────────────
-  useEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    const mat = mesh.material;
-
-    if (shadingMode === 'wireframe') {
-      mat.wireframe = true;
-      mat.color.setHex(0x38bdf8);
-      mat.map = null;
-    } else if (shadingMode === 'elevation') {
-      mat.wireframe = false;
-      mat.color.setHex(0x2dd4bf);
-      mat.map = null;
-    } else {
-      // textured
-      mat.wireframe = false;
-      mat.color.setHex(0xffffff);
-      if (textureUrl && !mat.map) {
-        mat.map = new THREE.TextureLoader().load(textureUrl);
-      }
-    }
-    mat.needsUpdate = true;
-  }, [shadingMode, textureUrl]);
-
-  // ─── Camera controls ─────────────────────────────────────────────────────
-  const resetCamera = () => {
-    if (!cameraRef.current || !controlsRef.current) return;
-    cameraRef.current.position.set(0, 180, 260);
-    controlsRef.current.target.set(0, 0, 0);
-    controlsRef.current.update();
-  };
-
-  const setNadirView = () => {
-    if (!cameraRef.current || !controlsRef.current) return;
-    cameraRef.current.position.set(0, 300, 0.001);
-    controlsRef.current.target.set(0, 0, 0);
-    controlsRef.current.update();
-  };
-
-  return (
-    <div className="relative w-full h-full flex flex-col bg-geo-950 overflow-hidden select-none">
-      {/* WebGL Canvas */}
-      <div ref={containerRef} className="w-full flex-1 cursor-grab active:cursor-grabbing" />
-
-      {/* Telemetry HUD */}
-      <div className="absolute top-4 left-4 bg-geo-900/80 backdrop-blur-md border border-geo-700/60 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 space-y-1 shadow-lg pointer-events-none">
-        <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400" />
-          <span className="font-semibold text-white">Three.js WebGL Engine</span>
-        </div>
-        <div className="text-[10px] text-slate-400 flex items-center space-x-3">
-          <span>FPS: <strong className="text-cyan-300">{fps}</strong></span>
-          <span>Grid: {GRID_RES}×{GRID_RES} verts</span>
-          <span>Exagg: <strong className="text-blue-300">{exaggeration.toFixed(1)}×</strong></span>
-          <span className={isMetric ? 'text-emerald-400' : 'text-amber-400'}>
-            {isMetric ? 'Metric' : 'Relative'}
-          </span>
-        </div>
-      </div>
-
-      {/* Camera Controls */}
-      <div className="absolute top-4 right-4 flex items-center space-x-2">
-        <button
-          onClick={setNadirView}
-          title="Top-Down Nadir Ortho View"
-          className="bg-geo-900/80 hover:bg-geo-800 text-slate-200 border border-geo-700/60 rounded-lg px-2.5 py-1.5 text-xs font-mono flex items-center space-x-1.5 shadow-lg transition-colors"
-        >
-          <Eye className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Nadir View</span>
-        </button>
-        <button
-          onClick={resetCamera}
-          title="Reset Perspective Camera"
-          className="bg-geo-900/80 hover:bg-geo-800 text-slate-200 border border-geo-700/60 rounded-lg px-2.5 py-1.5 text-xs font-mono flex items-center space-x-1.5 shadow-lg transition-colors"
-        >
-          <RotateCcw className="w-3.5 h-3.5 text-blue-400" />
-          <span>Reset Camera</span>
-        </button>
-      </div>
-    </div>
-  );
+export default function TerrainCanvas({ textureUrl, raster, rasterWidth, rasterHeight, exaggeration = 1, shadingMode = 'textured', isMetric = false, navigationMode = 'orbit', flight, speed = 40, clearance = 15, quality = 'balanced', onPick, onTelemetry, onHover }) {
+  const controlsRef = useRef(null); const maxSide = quality === 'high' ? 384 : quality === 'low' ? 160 : 256; const meshResult = useMemo(() => { try { return { data: buildTerrainMesh(raster, rasterWidth, rasterHeight, { maxSide }), error: null }; } catch (reason) { return { data: null, error: reason.message }; } }, [raster, rasterWidth, rasterHeight, maxSide]); const { data: meshData, error } = meshResult;
+  const reset = () => { const controls = controlsRef.current; if (!controls) return; controls.object.position.set(0, 180, 260); controls.target.set(0, 0, 0); controls.update(); };
+  const nadir = () => { const controls = controlsRef.current; if (!controls) return; controls.object.position.set(0, 300, 0.01); controls.target.set(0, 0, 0); controls.update(); };
+  if (error) return <div className="h-full flex items-center justify-center text-sm text-rose-300 bg-geo-950">Unable to create terrain mesh: {error}</div>;
+  if (!meshData) return <div className="h-full flex items-center justify-center text-sm text-slate-300 bg-geo-950">Loading numeric terrain raster…</div>;
+  return <div className="relative w-full h-full bg-slate-950 overflow-hidden"><Canvas shadows camera={{ position: [0, 180, 260], fov: 45, near: 0.1, far: 2000 }} gl={{ antialias: true, preserveDrawingBuffer: true }} dpr={[1, 2]} onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.15; gl.shadowMap.enabled = true; }}><color attach="background" args={['#172554']} /><fog attach="fog" args={['#172554', 220, 800]} /><hemisphereLight args={['#dbeafe', '#334155', 1.6]} /><directionalLight castShadow position={[150, 250, 100]} intensity={2.2} shadow-mapSize={[2048, 2048]} /><directionalLight position={[-150, 100, -100]} intensity={0.7} color="#bfdbfe" /><Suspense fallback={null}><TerrainScene meshData={meshData} textureUrl={textureUrl} exaggeration={exaggeration} shadingMode={shadingMode} navigationMode={navigationMode} flight={flight} speed={speed} clearance={clearance} isMetric={isMetric} onPick={onPick} onHover={onHover} onTelemetry={onTelemetry} onControls={(controls) => { controlsRef.current = controls; }} /></Suspense></Canvas><div className="absolute top-4 left-4 bg-slate-950/75 backdrop-blur-md border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 space-y-1 shadow-lg pointer-events-none"><strong>Terrain mesh</strong><div className="text-[10px] text-slate-300">Grid: {meshData.grid.width}×{meshData.grid.height} · {isMetric ? 'Calibrated elevation' : 'Relative depth'}</div></div><div className="absolute left-4 bottom-4 bg-slate-950/75 border border-white/20 rounded-lg px-2 py-1.5 text-[10px] font-mono text-white pointer-events-none"><strong className="text-blue-200">N ↑</strong><span className="mx-2 text-slate-400">|</span>X / Y / Z axis at origin</div><div className="absolute top-4 right-4 flex space-x-2"><button onClick={nadir} className="bg-white/95 hover:bg-white text-slate-900 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow-sm"><Eye className="w-3.5 h-3.5 inline mr-1 text-blue-600" />Nadir</button><button onClick={reset} className="bg-white/95 hover:bg-white text-slate-900 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow-sm"><RotateCcw className="w-3.5 h-3.5 inline mr-1 text-blue-600" />Reset</button></div></div>;
 }

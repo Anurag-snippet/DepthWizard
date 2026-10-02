@@ -9,12 +9,12 @@ export default {
     extend: {
       colors: {
         geo: {
-          950: '#070A12', // Deep cosmic navy background
-          900: '#0B0F19', // Main surface background
-          850: '#111726', // Panel surface
-          800: '#172033', // Card / module surface
-          700: '#1E2B45', // Borders & divider
-          600: '#2E3F63', // Hover state
+          950: '#f6f8fb', // App background
+          900: '#ffffff', // Main surface
+          850: '#ffffff', // Card surface
+          800: '#eef2f7', // Soft panel
+          700: '#d9e1ec', // Borders & divider
+          600: '#c6d2e1', // Hover state
           500: '#3B82F6', // Geospatial blue accent
           400: '#60A5FA', // Sky highlight
           300: '#93C5FD', // Light text highlight
@@ -29,8 +29,8 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        'geo-card': '0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.1)',
-        'geo-glow': '0 0 25px -5px rgba(56, 189, 248, 0.3)',
+        'geo-card': '0 4px 18px -6px rgba(15, 23, 42, 0.18)',
+        'geo-glow': '0 0 18px -6px rgba(37, 99, 235, 0.25)',
       }
     },
   },

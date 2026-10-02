@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { UploadCloud, FileImage } from 'lucide-react';
 
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'tif', 'tiff'];

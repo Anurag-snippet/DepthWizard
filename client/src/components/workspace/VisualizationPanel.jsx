@@ -29,12 +29,12 @@ export default function VisualizationPanel({
   const handleResetZoom = () => { setZoomLevel(1); setIsFit(true); };
 
   return (
-    <div className="bg-geo-850/90 border border-geo-700/70 rounded-xl overflow-hidden shadow-geo-card flex flex-col h-full">
+    <div className="bg-white border border-geo-700 rounded-xl overflow-hidden shadow-geo-card flex flex-col h-full">
       {/* Panel Header */}
-      <div className="px-4 py-3 border-b border-geo-700/60 bg-geo-900/80 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-geo-700 bg-slate-50 flex items-center justify-between">
         <div>
           <div className="flex items-center space-x-2">
-            <h3 className="text-xs font-semibold text-white uppercase tracking-wider">{title}</h3>
+            <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
             {badgeText && (
               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
                 isMetric
@@ -54,7 +54,7 @@ export default function VisualizationPanel({
             <select
               value={colormap}
               onChange={(e) => onColormapChange && onColormapChange(e.target.value)}
-              className="bg-geo-950 text-slate-300 text-[11px] font-mono rounded px-2 py-1 border border-geo-700/80 focus:outline-none focus:border-blue-500 mr-2"
+              className="bg-white text-slate-700 text-[11px] rounded px-2 py-1 border border-geo-700 focus:outline-none focus:border-blue-500 mr-2"
             >
               {colormapOptions.map((opt) => (
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
@@ -65,21 +65,21 @@ export default function VisualizationPanel({
           <button
             onClick={handleZoomIn}
             title="Zoom In"
-            className="p-1 text-slate-400 hover:text-white rounded hover:bg-geo-800 transition-colors"
+            className="p-1 text-slate-400 hover:text-slate-900 rounded hover:bg-geo-800 transition-colors"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleZoomOut}
             title="Zoom Out"
-            className="p-1 text-slate-400 hover:text-white rounded hover:bg-geo-800 transition-colors"
+            className="p-1 text-slate-400 hover:text-slate-900 rounded hover:bg-geo-800 transition-colors"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleResetZoom}
             title="Reset Fit"
-            className="p-1 text-slate-400 hover:text-white rounded hover:bg-geo-800 transition-colors"
+            className="p-1 text-slate-400 hover:text-slate-900 rounded hover:bg-geo-800 transition-colors"
           >
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
@@ -87,7 +87,7 @@ export default function VisualizationPanel({
       </div>
 
       {/* Viewport Area */}
-      <div className="flex-1 bg-geo-950/80 min-h-[320px] relative overflow-hidden flex items-center justify-center p-4">
+      <div className="flex-1 bg-slate-100 min-h-[320px] relative overflow-hidden flex items-center justify-center p-4">
         {isLoading ? (
           <div className="text-center p-8 space-y-3">
             <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
@@ -115,7 +115,7 @@ export default function VisualizationPanel({
 
         {/* Range bar at bottom */}
         {elevationRange && (
-          <div className="absolute bottom-2 left-4 right-4 bg-geo-900/90 backdrop-blur-sm border border-geo-700/60 rounded px-3 py-1.5 flex items-center justify-between text-[10px] font-mono text-slate-300">
+          <div className="absolute bottom-2 left-4 right-4 bg-white/95 backdrop-blur-sm border border-geo-700 rounded px-3 py-1.5 flex items-center justify-between text-[10px] text-slate-700">
             <span>Min: {elevationRange.min}{isMetric ? ' m' : ''}</span>
             <div className="h-2 flex-1 mx-4 rounded-full bg-gradient-to-r from-blue-900 via-emerald-600 to-amber-400 border border-slate-700/50" />
             <span>Max: {elevationRange.max}{isMetric ? ' m' : ''}</span>

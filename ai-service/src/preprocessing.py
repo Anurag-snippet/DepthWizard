@@ -40,6 +40,9 @@ def decode_image_bytes(image_bytes: bytes, filename: str = "image.png") -> np.nd
                     norm = cv2.normalize(tiff_data, None, 0, 255, cv2.NORM_MINMAX)
                     rgb = cv2.cvtColor(norm.astype(np.uint8), cv2.COLOR_GRAY2RGB)
                 elif tiff_data.ndim == 3:
+                    # tifffile can expose GeoTIFF bands as either H×W×C or C×H×W.
+                    if tiff_data.shape[0] <= 4 and tiff_data.shape[-1] > 4:
+                        tiff_data = np.moveaxis(tiff_data, 0, -1)
                     # Take first 3 bands (RGB)
                     bands = tiff_data[:, :, :3]
                     if bands.dtype != np.uint8:

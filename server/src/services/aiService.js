@@ -19,9 +19,11 @@ export class AiServiceClient {
     }
   }
 
-  async estimateDepth(imageBuffer, filename, colormap = 'turbo') {
+  async estimateDepth(imageBuffer, filename, colormap = 'turbo', referenceDemBuffer = null, referenceDemFilename = null, gcpJson = null) {
     const formData = new FormData();
     formData.append('image', imageBuffer, { filename: filename || 'image.png' });
+    if (referenceDemBuffer) formData.append('reference_dem', referenceDemBuffer, { filename: referenceDemFilename || 'reference_dem.tif' });
+    if (gcpJson) formData.append('gcp_json', gcpJson);
 
     const response = await this.client.post(
       `/api/inference/depth?colormap=${encodeURIComponent(colormap)}`,

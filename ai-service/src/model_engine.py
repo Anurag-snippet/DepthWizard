@@ -151,4 +151,5 @@ class DepthEstimationEngine:
             "statistics": stats,
             "output_type": "relative_inverse_depth",
             "is_metric": False,
+            "raw_disparity": raw_disparity_full,
         }
