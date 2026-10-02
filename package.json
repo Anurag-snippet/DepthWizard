@@ -1,0 +1,23 @@
+{
+  "name": "depthwizard-monorepo",
+  "version": "1.0.0",
+  "description": "DepthWizard (SIH 26175) — Single-View Height Estimation & 3D Flythrough Monorepo",
+  "private": true,
+  "scripts": {
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run start",
+    "dev:ai": ".\\ai-service\\.venv\\Scripts\\python ai-service\\main.py",
+    "build:client": "npm --prefix client run build",
+    "install:all": "npm install && npm --prefix client install && npm --prefix server install"
+  },
+  "keywords": [
+    "depth-estimation",
+    "monocular",
+    "geospatial",
+    "tensorflow",
+    "threejs",
+    "sih26175"
+  ],
+  "author": "DepthWizard Team",
+  "license": "MIT"
+}
