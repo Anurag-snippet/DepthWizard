@@ -8,7 +8,7 @@ test('decodes an explicitly base64 image data URL', async () => {
   assert.equal(await blob.text(), 'hello');
 });
 
-test('loads the bundled sample path through fetch instead of atob', async () => {
+test('loads the bundled river-valley sample path through fetch instead of atob', async () => {
   const originalFetch = globalThis.fetch;
   let requestedUrl;
   globalThis.fetch = async (url) => {
@@ -17,8 +17,8 @@ test('loads the bundled sample path through fetch instead of atob', async () => 
   };
 
   try {
-    const blob = await imageSourceToBlob('/samples/alpine_ridge_optical.png');
-    assert.equal(requestedUrl, '/samples/alpine_ridge_optical.png');
+    const blob = await imageSourceToBlob('/samples/river_valley_demo.png');
+    assert.equal(requestedUrl, '/samples/river_valley_demo.png');
     assert.equal(blob.type, 'image/png');
   } finally {
     globalThis.fetch = originalFetch;
@@ -27,7 +27,7 @@ test('loads the bundled sample path through fetch instead of atob', async () => 
 
 test('reports malformed base64 image data without leaking an atob error', async () => {
   await assert.rejects(
-    imageSourceToBlob('data:image/png;base64,/samples/alpine_ridge_optical.png'),
+    imageSourceToBlob('data:image/png;base64,/samples/river_valley_demo.png'),
     /source image data is invalid or corrupted/i,
   );
 });
