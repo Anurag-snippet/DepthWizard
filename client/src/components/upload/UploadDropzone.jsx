@@ -136,7 +136,7 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
             Click to browse or drop satellite / aerial imagery here
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Upload one GeoTIFF (.tif, .tiff), PNG, or JPEG file up to 50 MB
+            Upload one GeoTIFF (.tif, .tiff), PNG, or JPEG file up to 1 GB
           </p>
         </div>
 
