@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { UploadCloud, FileImage } from 'lucide-react';
 
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'tif', 'tiff'];
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024; // 1GB
 
 export default function UploadDropzone({ onFileSelected, onError, isProcessing }) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -26,7 +26,7 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
 
       if (file.size > MAX_FILE_SIZE_BYTES) {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-        reject(new Error(`"${file.name}": Exceeds 50 MB limit (${sizeMB} MB).`));
+        reject(new Error(`"${file.name}": Exceeds 1 GB limit (${sizeMB} MB).`));
         return;
       }
 
