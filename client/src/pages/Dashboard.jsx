@@ -1,164 +1,213 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
-  Mountain, 
-  Layers, 
-  Compass, 
-  Sliders, 
+  PlusCircle, 
   Activity, 
-  Terminal, 
   ArrowRight, 
-  CheckCircle2, 
-  FileCode,
-  Box
+  FileImage, 
+  ShieldCheck, 
+  Sliders,
+  Layers,
+  Terminal
 } from 'lucide-react';
+import MetricsCard from '../components/common/MetricsCard';
+import EmptyState from '../components/common/EmptyState';
+import { projectStore } from '../services/projectStore';
 
-export default function Dashboard({ backendHealth, aiHealth }) {
-  const phases = [
-    { id: 'Phase 1', title: 'Project Setup & Architecture', status: 'Active / Completed', desc: 'Monorepo scaffolding, microservices, health telemetry, and client layout.' },
-    { id: 'Phase 2', title: 'Image Upload & Geospatial Preprocessing', status: 'Pending', desc: 'Optical and GeoTIFF ingestion, contrast normalization, metadata inspection.' },
-    { id: 'Phase 3', title: 'TensorFlow Monocular Depth Estimation', status: 'Pending', desc: 'Pretrained neural model inference to produce relative depth maps [0, 1].' },
-    { id: 'Phase 4', title: 'Relative Depth Visualization & Inspection', status: 'Pending', desc: 'Colormapped 2D viewers, interactive depth probe, histogram analysis.' },
-    { id: 'Phase 5', title: 'Metric Elevation Calibration (DEM/GCP)', status: 'Pending', desc: 'Reference elevation regression to convert relative disparity into true metres.' },
-    { id: 'Phase 6-8', title: '3D Terrain Mesh & Flythrough Canvas', status: 'Pending', desc: 'Three.js displacement mesh, satellite texture projection, spline flightpath.' },
-    { id: 'Phase 9-10', title: 'Terrain Analysis, Export & History', status: 'Pending', desc: 'Transect elevation profiles, slope calculations, GLTF/DEM exports.' },
-  ];
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [projects, setProjects] = useState([]);
+  const [stats, setStats] = useState({
+    totalAnalyses: 0,
+    calibratedAnalyses: 0,
+    relativeAnalyses: 0,
+    completedAnalyses: 0,
+    totalMegapixelsProcessed: 0,
+    hasRecords: false,
+  });
+
+  const loadData = () => {
+    const list = projectStore.getProjects();
+    setProjects(list);
+    setStats(projectStore.getStatistics());
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleLoadSample = () => {
+    const sample = projectStore.createSampleProject();
+    loadData();
+    navigate(`/workspace?id=${sample.id}`);
+  };
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6">
-      {/* Hero Banner */}
-      <div className="bg-geo-900/80 border border-geo-700/70 rounded-xl p-6 shadow-geo-card">
+      {/* Top Banner / Mission Header */}
+      <div className="bg-geo-900/90 border border-geo-700/80 rounded-xl p-6 shadow-geo-card">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
-                Phase 1 Implemented
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                SIH Problem Statement 26175
               </span>
-              <span className="text-xs font-mono text-slate-400">SIH Problem Statement 26175</span>
+              <span className="text-[11px] font-mono text-slate-400">
+                Single-View Height Estimation & 3D Flythrough
+              </span>
             </div>
-            <h1 className="text-2xl font-bold text-white mt-1">DepthWizard Engineering Console</h1>
-            <p className="text-sm text-slate-400 mt-1 max-w-3xl leading-relaxed">
-              Single-view height estimation and real-time 3D flight simulation for optical satellite imagery.
-              Powered by TensorFlow/Keras monocular estimation, reference elevation calibration, and WebGL Three.js rendering.
+            <h1 className="text-2xl font-bold text-white mt-1">Geospatial Intelligence Dashboard</h1>
+            <p className="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
+              Accepts single-view optical satellite imagery, estimates relative relief gradients with monocular AI, 
+              and calibrates predictions against reference elevation datasets for interactive 3D terrain simulation.
             </p>
           </div>
 
-          <Link
-            to="/workspace"
-            className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-600/30 whitespace-nowrap self-start md:self-auto"
-          >
-            <span>Open 3D Workspace</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleLoadSample}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 bg-geo-850 hover:bg-geo-800 border border-geo-700/60 transition-colors"
+            >
+              <span>Load Sample Crop</span>
+            </button>
+
+            <Link
+              to="/new-analysis"
+              className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold text-xs transition-colors shadow-lg shadow-blue-900/40"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>New Analysis</span>
+            </Link>
+          </div>
         </div>
 
-        {/* Live Service Diagnostic Matrix */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-          <div className="bg-geo-850 border border-geo-700/60 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
-                <Box className="w-3.5 h-3.5 text-blue-400" />
-                <span>Frontend Client</span>
-              </span>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
-                Active (Vite)
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-2">
-              React 19, Tailwind CSS, Three.js, React Three Fiber & Drei.
-            </p>
-          </div>
-
-          <div className="bg-geo-850 border border-geo-700/60 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
-                <FileCode className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Backend Gateway</span>
-              </span>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                backendHealth.online 
-                  ? 'text-emerald-400 bg-emerald-950/60 border-emerald-800/40' 
-                  : 'text-amber-400 bg-amber-950/60 border-amber-800/40'
-              }`}>
-                {backendHealth.online ? 'Online (5000)' : 'Awaiting Start'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-2">
-              Node.js Express REST API, Multer upload pipeline, elevation calibrator.
-            </p>
-          </div>
-
-          <div className="bg-geo-850 border border-geo-700/60 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
-                <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-                <span>AI Inference Engine</span>
-              </span>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                aiHealth.online 
-                  ? 'text-emerald-400 bg-emerald-950/60 border-emerald-800/40' 
-                  : 'text-amber-400 bg-amber-950/60 border-amber-800/40'
-              }`}>
-                {aiHealth.online ? 'Online (8000)' : 'Awaiting Start'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-2">
-              FastAPI, TensorFlow 2.21, Keras 3.15, OpenCV, NumPy.
-            </p>
-          </div>
+        {/* Live Metrics Grid — Computed strictly from actual project records */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+          <MetricsCard
+            title="Total Analyses"
+            value={stats.totalAnalyses}
+            subtitle={stats.hasRecords ? 'Stored project runs' : 'No records yet'}
+            icon={Layers}
+            highlight={stats.totalAnalyses > 0}
+          />
+          <MetricsCard
+            title="Calibrated (Metric)"
+            value={stats.calibratedAnalyses}
+            subtitle="Validated with reference DEM"
+            icon={ShieldCheck}
+            badge="Metric Elevation"
+          />
+          <MetricsCard
+            title="Relative Disparity"
+            value={stats.relativeAnalyses}
+            subtitle="Unitless [0, 1] gradient"
+            icon={Sliders}
+            badge="Relative Mode"
+          />
+          <MetricsCard
+            title="Megapixels Processed"
+            value={`${stats.totalMegapixelsProcessed} MP`}
+            subtitle="Derived from image metadata"
+            icon={Activity}
+          />
         </div>
       </div>
 
       {/* Geospatial Scientific Integrity Protocol Notice */}
-      <div className="bg-blue-950/20 border border-blue-800/40 rounded-lg p-4 flex items-start space-x-3">
-        <Terminal className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+      <div className="bg-blue-950/20 border border-blue-800/40 rounded-xl p-4 flex items-start space-x-3">
+        <Terminal className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
         <div className="text-xs text-slate-300 space-y-1">
-          <p className="font-semibold text-blue-300">SIH 26175 Scientific Requirement Notice:</p>
+          <p className="font-semibold text-cyan-300">Metric Accuracy Protocol:</p>
           <p className="text-slate-400 leading-relaxed">
-            The monocular depth network outputs relative depth values $[0, 1]$ representing distance from viewpoint or relative relief. 
-            <strong> Relative depth will strictly NOT be labeled as absolute metric elevation</strong> until calibrated against verified reference Digital Elevation Models (e.g. SRTM, ALOS, TanDEM-X) or Ground Control Points (GCPs).
+            Neural monocular depth estimation models produce relative disparity maps $[0, 1]$ indicating visual depth ambiguity. 
+            In compliance with SIH evaluation guidelines, <strong>uncalibrated predictions are strictly labeled as relative disparity</strong>. 
+            Actual metric elevation (metres above mean sea level) is only presented after calibration against reference DEMs or GCP ground truths.
           </p>
         </div>
       </div>
 
-      {/* Implementation Roadmap */}
-      <div className="bg-geo-900/60 border border-geo-700/50 rounded-xl p-6">
-        <h2 className="text-base font-bold text-white mb-4">Implementation Phases Roadmap</h2>
-        <div className="space-y-3">
-          {phases.map((p, i) => (
-            <div 
-              key={p.id}
-              className={`p-3.5 rounded-lg border flex items-center justify-between ${
-                i === 0 
-                  ? 'bg-geo-850/80 border-blue-500/40' 
-                  : 'bg-geo-850/30 border-geo-700/30 opacity-75'
-              }`}
+      {/* Recent Projects Section */}
+      <div className="bg-geo-900/70 border border-geo-700/60 rounded-xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider">Recent Project Records</h2>
+            <p className="text-xs text-slate-400">Chronological history of ingested imagery and analyses</p>
+          </div>
+          {projects.length > 0 && (
+            <Link
+              to="/history"
+              className="text-xs text-blue-400 hover:text-blue-300 font-mono flex items-center space-x-1"
             >
-              <div className="flex items-center space-x-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono ${
-                  i === 0 ? 'bg-blue-500 text-white' : 'bg-geo-800 text-slate-400'
-                }`}>
-                  {i + 1}
-                </div>
+              <span>View All Records ({projects.length})</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
+        </div>
+
+        {projects.length === 0 ? (
+          <EmptyState
+            icon={FileImage}
+            title="No analyses recorded yet"
+            description="Start a new analysis with a satellite image crop or load the verified sample dataset to explore the pipeline."
+            actionLabel="Start New Analysis"
+            onAction={() => navigate('/new-analysis')}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.slice(0, 3).map((p) => (
+              <div
+                key={p.id}
+                className="bg-geo-850/80 border border-geo-700/60 hover:border-blue-500/50 rounded-xl p-4 flex flex-col justify-between transition-all group"
+              >
                 <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-semibold text-slate-200">{p.title}</span>
-                    <span className="text-[10px] font-mono text-slate-500">{p.id}</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-geo-950 text-slate-300 border border-geo-700/50">
+                      {p.mode === 'calibrated' ? 'Calibrated (Metric)' : 'Relative Disparity'}
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-800/40 capitalize">
+                      {p.status}
+                    </span>
                   </div>
-                  <p className="text-xs text-slate-400">{p.desc}</p>
+
+                  <h3 className="text-sm font-semibold text-white group-hover:text-blue-300 transition-colors line-clamp-1">
+                    {p.name}
+                  </h3>
+                  <p className="text-xs text-slate-400 line-clamp-2 mt-1">
+                    {p.description || 'Single-view optical crop.'}
+                  </p>
+
+                  <div className="mt-3 text-[11px] font-mono text-slate-400 space-y-1">
+                    <div className="flex justify-between">
+                      <span>Dimensions:</span>
+                      <span className="text-slate-200">
+                        {p.metadata?.width ? `${p.metadata.width}×${p.metadata.height}` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>File Size:</span>
+                      <span className="text-slate-200">{p.metadata?.formattedSize || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-geo-700/50 flex items-center justify-between text-xs">
+                  <span className="text-[10px] font-mono text-slate-500">
+                    {new Date(p.createdAt).toLocaleDateString()}
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <Link
+                      to={`/workspace?id=${p.id}`}
+                      className="text-blue-400 hover:text-blue-300 font-medium text-xs flex items-center space-x-1"
+                    >
+                      <span>Workspace</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 </div>
               </div>
-
-              <span className={`text-xs font-mono px-2 py-0.5 rounded ${
-                i === 0 
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                  : 'text-slate-500 bg-geo-800/50'
-              }`}>
-                {p.status}
-              </span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -3,7 +3,9 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 import Dashboard from './pages/Dashboard';
+import NewAnalysis from './pages/NewAnalysis';
 import Workspace from './pages/Workspace';
+import TerrainViewer from './pages/TerrainViewer';
 import History from './pages/History';
 import NotFound from './pages/NotFound';
 import { checkBackendHealth, checkAiHealth } from './services/api';
@@ -27,7 +29,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-geo-950 text-slate-100 flex flex-col font-sans geo-grid-pattern selection:bg-blue-600 selection:text-white">
+      <div className="h-screen w-screen bg-geo-950 text-slate-100 flex flex-col font-sans geo-grid-pattern selection:bg-blue-600 selection:text-white overflow-hidden">
         {/* Top Geospatial Navbar */}
         <Navbar 
           backendStatus={backendHealth.online ? 'online' : 'offline'}
@@ -43,7 +45,9 @@ export default function App() {
                 path="/" 
                 element={<Dashboard backendHealth={backendHealth} aiHealth={aiHealth} />} 
               />
+              <Route path="/new-analysis" element={<NewAnalysis />} />
               <Route path="/workspace" element={<Workspace />} />
+              <Route path="/terrain-viewer" element={<TerrainViewer />} />
               <Route path="/history" element={<History />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
