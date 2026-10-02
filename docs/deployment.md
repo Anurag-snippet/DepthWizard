@@ -20,20 +20,20 @@ Never commit a real `.env` file. Copy the examples and set public URLs at build 
 # Express
 NODE_ENV=production
 PORT=5000
-AI_SERVICE_URL=https://ai.example.org
-ALLOWED_ORIGINS=https://app.example.org
+AI_SERVICE_URL=https://depthwizard-ai-9i23.onrender.com
+ALLOWED_ORIGINS=https://depthwizard-2tf3.onrender.com
 MAX_UPLOAD_SIZE_MB=50
 PERSISTENT_STORAGE_DIR=/data
 
 # FastAPI
 ENVIRONMENT=production
 PORT=8000
-ALLOWED_ORIGINS=https://app.example.org
+ALLOWED_ORIGINS=https://depthwizard-2tf3.onrender.com
 OUTPUTS_DIR=/data/outputs
 
 # Vite, at build time only
-VITE_API_URL=https://api.example.org/api
-VITE_AI_URL=https://ai.example.org
+VITE_API_URL=https://depthwizard-q2f6.onrender.com/api
+VITE_AI_URL=https://depthwizard-ai-9i23.onrender.com
 ```
 
 `ALLOWED_ORIGINS` accepts a comma-separated allow-list. In production it must contain the exact HTTPS frontend origin. The API stops accepting arbitrary browser origins; do not set it to `*`.
@@ -41,7 +41,7 @@ VITE_AI_URL=https://ai.example.org
 ## Container deployment
 
 1. Obtain the model artifact legally and place `midas_v21_small.tflite` at `ai-service/models/weights/midas_v21_small.tflite`. It is intentionally ignored by Git.
-2. Set `ALLOWED_ORIGINS=https://app.example.org` in the shell or an untracked `.env` file.
+2. Set `ALLOWED_ORIGINS=https://depthwizard-2tf3.onrender.com` in the Render environment settings for both the Express API and FastAPI services (or in the shell/untracked `.env` for self-hosted containers).
 3. Start API and AI with durable named volumes:
 
 ```powershell
@@ -93,4 +93,4 @@ Do this against the actual production URL before calling the app deployed:
 
 ## Deployment status
 
-No hosting account, production domain, or live production URL was provided during Phase 9. Therefore this repository is deployment-prepared but **not claimed as deployed or production-tested**.
+The AI service is deployed at `https://depthwizard-ai-9i23.onrender.com`, the Express API at `https://depthwizard-q2f6.onrender.com`, and the frontend at `https://depthwizard-2tf3.onrender.com`. Configure the AI URL as `AI_SERVICE_URL` on Express, both public URLs as `VITE_AI_URL` and `VITE_API_URL` when building the client, and the frontend origin as `ALLOWED_ORIGINS` on both hosted services. The full application is not considered production-verified until the checklist above passes.

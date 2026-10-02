@@ -23,9 +23,12 @@ export default function App() {
 
   useEffect(() => {
     refreshStatus();
-    const interval = setInterval(refreshStatus, 8000);
+    const interval = setInterval(refreshStatus, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const aiStatus = aiHealth.online ? 'online' : (aiHealth.status === 'waking_up' ? 'waking_up' : 'offline');
+  const dbStatus = backendHealth.data?.database?.status === 'connected' ? 'online' : 'offline';
 
   return (
     <BrowserRouter>
@@ -33,7 +36,8 @@ export default function App() {
         {/* Top Geospatial Navbar */}
         <Navbar 
           backendStatus={backendHealth.online ? 'online' : 'offline'}
-          aiStatus={aiHealth.online ? 'online' : 'offline'}
+          aiStatus={aiStatus}
+          dbStatus={backendHealth.online ? dbStatus : null}
         />
 
         {/* Body Workspace */}

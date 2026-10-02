@@ -1,37 +1,42 @@
 import { useRef, useState } from 'react';
-import { UploadCloud, FileImage } from 'lucide-react';
+import { UploadCloud, FileImage, Layers } from 'lucide-react';
 
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'tif', 'tiff'];
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
-export default function UploadDropzone({ onFileSelected, onError, isProcessing }) {
+export default function UploadDropzone({ onFileSelected, onFilesSelected, onError, isProcessing }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  const validateAndProcessFile = (file) => {
-    if (!file) return;
+  const formatBytes = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
-      onError(`Unsupported file format (.${extension || 'unknown'}). Please upload a PNG, JPG, or GeoTIFF (.tif) image.`);
-      return;
-    }
+  const processSingleFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
+        reject(new Error(`"${file.name}": Unsupported format (.${extension || 'unknown'}). Use PNG, JPG, or GeoTIFF.`));
+        return;
+      }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-      onError(`File exceeds the 50 MB limit (detected: ${sizeMB} MB). Please choose a smaller crop.`);
-      return;
-    }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        reject(new Error(`"${file.name}": Exceeds 50 MB limit (${sizeMB} MB).`));
+        return;
+      }
 
-    // Read dimensions using HTML5 Image
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target.result;
+      const objectUrl = URL.createObjectURL(file);
       const img = new Image();
+
       img.onload = () => {
-        onFileSelected({
+        resolve({
           file,
-          dataUrl,
+          objectUrl,
           filename: file.name,
           extension: extension.toUpperCase(),
           sizeBytes: file.size,
@@ -40,11 +45,12 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
           height: img.naturalHeight || img.height,
         });
       };
+
       img.onerror = () => {
-        // Fallback for GeoTIFFs or images browser can't directly render as img
-        onFileSelected({
+        // Fallback for multi-band GeoTIFFs that browser native rasterizer can't draw
+        resolve({
           file,
-          dataUrl: null,
+          objectUrl,
           filename: file.name,
           extension: extension.toUpperCase(),
           sizeBytes: file.size,
@@ -53,20 +59,39 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
           height: 'Multi-band',
         });
       };
-      img.src = dataUrl;
-    };
-    reader.onerror = () => {
-      onError('Failed to read the selected file from disk.');
-    };
-    reader.readAsDataURL(file);
+
+      img.src = objectUrl;
+    });
   };
 
-  const formatBytes = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const handleFiles = async (fileList) => {
+    if (!fileList || fileList.length === 0 || isProcessing) return;
+
+    const files = Array.from(fileList);
+    const validInfos = [];
+    const errors = [];
+
+    for (const file of files) {
+      try {
+        const info = await processSingleFile(file);
+        validInfos.push(info);
+      } catch (err) {
+        errors.push(err.message);
+      }
+    }
+
+    if (errors.length > 0 && onError) {
+      onError(errors.join('\n'));
+    }
+
+    if (validInfos.length > 0) {
+      if (onFilesSelected) {
+        onFilesSelected(validInfos);
+      }
+      if (onFileSelected) {
+        onFileSelected(validInfos[0]);
+      }
+    }
   };
 
   const handleDragOver = (e) => {
@@ -82,17 +107,17 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (isProcessing) return;
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      validateAndProcessFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files) {
+      handleFiles(e.dataTransfer.files);
     }
   };
 
   const handleInputChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      validateAndProcessFile(e.target.files[0]);
+    if (e.target.files) {
+      handleFiles(e.target.files);
     }
+    // Reset so same files can be re-selected if needed
+    e.target.value = '';
   };
 
   return (
@@ -110,6 +135,7 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept=".png,.jpg,.jpeg,.tif,.tiff"
         onChange={handleInputChange}
         className="hidden"
@@ -122,16 +148,22 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
 
         <div>
           <p className="text-sm font-semibold text-white">
-            Click to browse or drop satellite / aerial image here
+            Click to browse or drop satellite / aerial imagery here
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Supports GeoTIFF (.tif, .tiff), PNG, and JPEG up to 50 MB
+            Supports batch upload of multiple GeoTIFF (.tif, .tiff), PNG, and JPEG files up to 50 MB each
           </p>
         </div>
 
-        <div className="inline-flex items-center space-x-2 text-[11px] font-mono text-slate-400 bg-geo-950 px-3 py-1 rounded-md border border-geo-700/50">
-          <FileImage className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Recommended: Orthorectified high-resolution RGB crop</span>
+        <div className="flex items-center space-x-3 text-[11px] font-mono text-slate-400">
+          <div className="inline-flex items-center space-x-1.5 bg-geo-950 px-2.5 py-1 rounded-md border border-geo-700/50">
+            <Layers className="w-3.5 h-3.5 text-blue-400" />
+            <span>Multiple files supported</span>
+          </div>
+          <div className="inline-flex items-center space-x-1.5 bg-geo-950 px-2.5 py-1 rounded-md border border-geo-700/50">
+            <FileImage className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Orthorectified RGB recommended</span>
+          </div>
         </div>
       </div>
     </div>

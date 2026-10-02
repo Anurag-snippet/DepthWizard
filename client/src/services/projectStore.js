@@ -1,21 +1,51 @@
 /**
  * DepthWizard Project Store
- * Local storage persistence layer for genuine project records and statistics.
+ * Local storage & remote MongoDB persistence layer for genuine project records and statistics.
  * In compliance with SIH standards: No fabricated or hardcoded statistical metrics.
  */
+import { updateProjectApi, deleteRemoteProject, fetchRemoteProjects } from './api';
 
 const STORAGE_KEY = 'depthwizard_projects';
 const ACTIVE_PROJECT_KEY = 'depthwizard_active_project_id';
+// Object URLs are valid only for the current tab. Keep them out of persistent
+// storage, but retain them in memory so a newly uploaded image is still shown
+// while the user moves straight into the workspace.
+const transientImageSources = new Map();
+
+const isTransientImageSource = (value) =>
+  typeof value === 'string' && (value.startsWith('data:') || value.startsWith('blob:'));
+
+const toPersistentProject = (project) => {
+  const persistent = { ...project };
+  if (isTransientImageSource(persistent.imageSrc)) delete persistent.imageSrc;
+  return persistent;
+};
+
+const hydrateProject = (project) => {
+  const transientImageSrc = transientImageSources.get(project.id);
+  return transientImageSrc ? { ...project, imageSrc: transientImageSrc } : project;
+};
+
+const readPersistentProjects = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const projects = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(projects)) return [];
+
+    const compactProjects = projects.map(toPersistentProject);
+    if (JSON.stringify(compactProjects) !== JSON.stringify(projects)) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(compactProjects));
+    }
+    return compactProjects;
+  } catch (e) {
+    console.error('Failed to read projects from localStorage:', e);
+    return [];
+  }
+};
 
 export const projectStore = {
   getProjects() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      console.error('Failed to read projects from localStorage:', e);
-      return [];
-    }
+    return readPersistentProjects().map(hydrateProject);
   },
 
   getProject(id) {
@@ -53,15 +83,26 @@ export const projectStore = {
       updatedAt: new Date().toISOString(),
     };
 
+    if (isTransientImageSource(updatedProject.imageSrc)) {
+      transientImageSources.set(updatedProject.id, updatedProject.imageSrc);
+    }
+
+    const persistentProject = toPersistentProject(updatedProject);
     if (existingIndex >= 0) {
-      list[existingIndex] = updatedProject;
+      list[existingIndex] = persistentProject;
     } else {
-      list.unshift(updatedProject);
+      list.unshift(persistentProject);
     }
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list.map(toPersistentProject)));
       this.setActiveProject(updatedProject.id);
+
+      // Async sync to remote MongoDB backend
+      if (updatedProject.id && !updatedProject.isSample) {
+        updateProjectApi(updatedProject.id, persistentProject).catch(() => {});
+      }
+
       return updatedProject;
     } catch (e) {
       console.error('Failed to save project:', e);
@@ -78,7 +119,37 @@ export const projectStore = {
       const nextActive = list.length > 0 ? list[0].id : null;
       this.setActiveProject(nextActive);
     }
+
+    // Sync deletion to remote backend / MongoDB
+    deleteRemoteProject(id).catch(() => {});
+
     return list;
+  },
+
+  async syncWithRemote() {
+    try {
+      const remoteProjects = await fetchRemoteProjects();
+      if (!Array.isArray(remoteProjects) || remoteProjects.length === 0) return this.getProjects();
+
+      const localList = readPersistentProjects();
+      const localMap = new Map(localList.map((p) => [p.id, p]));
+
+      for (const remote of remoteProjects) {
+        if (!localMap.has(remote.id)) {
+          localList.push(remote);
+        } else {
+          // Merge metadata
+          const existing = localMap.get(remote.id);
+          localMap.set(remote.id, { ...existing, ...remote });
+        }
+      }
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(localList));
+      return this.getProjects();
+    } catch (err) {
+      console.warn('Sync with remote MongoDB skipped:', err.message);
+      return this.getProjects();
+    }
   },
 
   getStatistics() {
@@ -88,9 +159,8 @@ export const projectStore = {
     const relativeCount = list.filter((p) => p.mode === 'relative').length;
     const completedCount = list.filter((p) => p.status === 'completed' || p.status === 'ready').length;
 
-    // Calculate total megapixels processed from actual records
     const totalMegapixels = list.reduce((acc, p) => {
-      if (p.metadata?.width && p.metadata?.height) {
+      if (p.metadata?.width && p.metadata?.height && typeof p.metadata.width === 'number') {
         return acc + (p.metadata.width * p.metadata.height) / 1_000_000;
       }
       return acc;

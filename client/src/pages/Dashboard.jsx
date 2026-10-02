@@ -14,7 +14,7 @@ import MetricsCard from '../components/common/MetricsCard';
 import EmptyState from '../components/common/EmptyState';
 import { projectStore } from '../services/projectStore';
 
-export default function Dashboard() {
+export default function Dashboard({ backendHealth, aiHealth }) {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [stats, setStats] = useState({
@@ -34,6 +34,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadData();
+    projectStore.syncWithRemote().then((list) => {
+      setProjects(list);
+      setStats(projectStore.getStatistics());
+    });
   }, []);
 
   const handleLoadSample = () => {
@@ -121,6 +125,51 @@ export default function Dashboard() {
             Metre values appear only after a spatially aligned reference DEM supports calibration.
           </p>
         </div>
+      </div>
+
+      {/* Cloud Infrastructure & Engine Telemetry */}
+      <div className="bg-geo-900/80 border border-geo-700/70 rounded-xl p-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center space-x-2">
+            <span className="font-semibold text-white">System Infrastructure:</span>
+            <span className="text-slate-400">Production Services & Database Persistence</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+            {/* Express API */}
+            <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-geo-950 border border-geo-700">
+              <span className={`w-2 h-2 rounded-full ${backendHealth?.online ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              <span className="text-slate-300">API Gateway:</span>
+              <span className={backendHealth?.online ? 'text-emerald-400' : 'text-rose-400'}>
+                {backendHealth?.online ? 'Online' : 'Unavailable'}
+              </span>
+            </div>
+
+            {/* AI Service */}
+            <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-geo-950 border border-geo-700">
+              <span className={`w-2 h-2 rounded-full ${aiHealth?.online ? 'bg-emerald-500' : (aiHealth?.status === 'waking_up' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500')}`} />
+              <span className="text-slate-300">MiDaS AI Engine:</span>
+              <span className={aiHealth?.online ? 'text-emerald-400' : (aiHealth?.status === 'waking_up' ? 'text-amber-400' : 'text-rose-400')}>
+                {aiHealth?.online ? 'Operational' : (aiHealth?.status === 'waking_up' ? 'Waking Up (Render Free Tier)' : 'Unavailable')}
+              </span>
+            </div>
+
+            {/* MongoDB Atlas */}
+            <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-geo-950 border border-geo-700">
+              <span className={`w-2 h-2 rounded-full ${backendHealth?.data?.database?.status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="text-slate-300">Database:</span>
+              <span className={backendHealth?.data?.database?.status === 'connected' ? 'text-emerald-400' : 'text-amber-400'}>
+                {backendHealth?.data?.database?.status === 'connected' ? 'MongoDB Atlas' : 'Local Storage'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {aiHealth?.status === 'waking_up' && (
+          <div className="mt-2 text-[11px] text-amber-300/90 font-mono bg-amber-950/30 border border-amber-800/40 p-2 rounded">
+            ℹ Note: On Render free tier, instances spin down after 15m of inactivity. Initial startup takes ~30-60 seconds. You can queue your uploads now; analysis will execute once ready.
+          </div>
+        )}
       </div>
 
       {/* Recent Projects Section */}

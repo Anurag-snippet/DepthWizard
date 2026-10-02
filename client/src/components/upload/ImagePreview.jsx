@@ -25,9 +25,9 @@ export default function ImagePreview({ fileInfo, onClear }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
         {/* Thumbnail Preview */}
         <div className="aspect-video bg-geo-950 rounded-lg overflow-hidden border border-geo-700/60 relative flex items-center justify-center">
-          {fileInfo.dataUrl ? (
+          {fileInfo.objectUrl ? (
             <img
-              src={fileInfo.dataUrl}
+              src={fileInfo.objectUrl}
               alt={fileInfo.filename}
               className="w-full h-full object-contain"
             />

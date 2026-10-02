@@ -16,6 +16,7 @@ export default function Workspace() {
   const projectId = searchParams.get('id');
 
   const [project, setProject]           = useState(null);
+  const [allProjects, setAllProjects]   = useState([]);
   const [loading, setLoading]           = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep]   = useState(1);
@@ -24,8 +25,15 @@ export default function Workspace() {
   const [inferenceError, setInferenceError] = useState(null);
   const [inferenceStats, setInferenceStats] = useState(null);
 
-  // Load project from store on mount
+  // Load project from store on mount and sync with MongoDB
   useEffect(() => {
+    projectStore.syncWithRemote().then((list) => {
+      setAllProjects(list);
+    });
+
+    const list = projectStore.getProjects();
+    setAllProjects(list);
+
     let p = null;
     if (projectId) {
       p = projectStore.getProject(projectId);
@@ -186,20 +194,38 @@ export default function Workspace() {
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
       {/* ── Top Workspace Status Bar ── */}
-      <div className="h-14 border-b border-geo-700 bg-white px-6 flex items-center justify-between flex-shrink-0">
+      <div className="h-14 border-b border-geo-700 bg-geo-900 px-6 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-bold text-white tracking-wide truncate max-w-[240px]">
-              {project.name}
-            </span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-              isCalibrated
-                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
-                : 'bg-amber-950/60 text-amber-300 border-amber-800/40'
-            }`}>
-              {hasMetricCalibration ? 'Calibrated (Metric)' : isCalibrated ? 'Calibration Requested' : 'Relative Disparity'}
-            </span>
-          </div>
+          {allProjects.length > 1 ? (
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-slate-400 font-medium">Image:</span>
+              <select
+                value={project.id}
+                onChange={(e) => navigate(`/workspace?id=${e.target.value}`)}
+                className="bg-geo-950 text-xs font-semibold text-white border border-geo-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500 max-w-[220px] truncate"
+              >
+                {allProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} {p.depthMapSrc ? '✓' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-white tracking-wide truncate max-w-[240px]">
+                {project.name}
+              </span>
+            </div>
+          )}
+
+          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+            isCalibrated
+              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
+              : 'bg-amber-950/60 text-amber-300 border-amber-800/40'
+          }`}>
+            {hasMetricCalibration ? 'Calibrated (Metric)' : isCalibrated ? 'Calibration Requested' : 'Relative Disparity'}
+          </span>
 
           <div className="hidden md:flex items-center space-x-2 text-xs text-slate-400 font-mono">
             <span>Dimensions:</span>

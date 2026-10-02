@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Mountain } from 'lucide-react';
 import StatusBadge from '../common/StatusBadge';
 
-export default function Navbar({ backendStatus, aiStatus }) {
+export default function Navbar({ backendStatus, aiStatus, dbStatus }) {
   const { pathname } = useLocation();
   const pageName = pathname.startsWith('/new-analysis') ? 'New analysis'
     : pathname.startsWith('/workspace') ? 'Analysis workspace'
@@ -28,7 +28,7 @@ export default function Navbar({ backendStatus, aiStatus }) {
       </div>
 
       {/* Global telemetry & compliance badges */}
-      <div className="flex items-center space-x-3 text-xs">
+      <div className="flex items-center space-x-2.5 text-xs">
         <StatusBadge 
           status={backendStatus} 
           label="API" 
@@ -38,9 +38,16 @@ export default function Navbar({ backendStatus, aiStatus }) {
         <StatusBadge 
           status={aiStatus} 
           label="AI" 
-          detail={aiStatus === 'online' ? 'online' : 'unavailable'}
+          detail={aiStatus === 'online' ? 'online' : (aiStatus === 'waking_up' ? 'waking up' : 'unavailable')}
         />
 
+        {dbStatus && (
+          <StatusBadge 
+            status={dbStatus} 
+            label="DB" 
+            detail={dbStatus === 'online' ? 'MongoDB' : 'Fallback'}
+          />
+        )}
       </div>
     </header>
   );

@@ -1,6 +1,6 @@
 # DepthWizard API
 
-Base URL: `http://localhost:5000/api`. The client reads it from `VITE_API_URL`; Express reads the AI service from `AI_SERVICE_URL`.
+Local base URL: `http://localhost:5000/api`. Production base URL: `https://depthwizard-q2f6.onrender.com/api`. The client reads its API base from `VITE_API_URL`; Express reads the AI service from `AI_SERVICE_URL`.
 
 ## Project and processing API
 

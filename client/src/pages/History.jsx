@@ -28,6 +28,9 @@ export default function History() {
 
   useEffect(() => {
     loadProjects();
+    projectStore.syncWithRemote().then((list) => {
+      setProjects(list);
+    });
   }, []);
 
   const handleDeleteConfirm = () => {

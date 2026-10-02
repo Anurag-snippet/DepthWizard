@@ -4,13 +4,12 @@
  */
 import { aiService } from '../services/aiService.js';
 import fs from 'fs';
-import path from 'path';
 
 /**
  * POST /api/inference/depth
  * Accepts multipart/form-data with `image` field, forwards to AI service.
  */
-export async function runDepthInference(req, res, next) {
+export async function runDepthInference(req, res, _next) {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -20,7 +19,7 @@ export async function runDepthInference(req, res, next) {
     }
 
     const colormap = req.query.colormap || req.body.colormap || 'turbo';
-    const { path: filePath, originalname, mimetype } = req.file;
+    const { path: filePath, originalname } = req.file;
 
     // Read uploaded buffer from disk
     const imageBuffer = fs.readFileSync(filePath);
@@ -40,7 +39,9 @@ export async function runDepthInference(req, res, next) {
   } catch (error) {
     // Clean up on error
     if (req.file?.path) {
-      try { fs.unlinkSync(req.file.path); } catch (_) {}
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
     }
 
     const statusCode = error.response?.status || 500;
@@ -55,12 +56,23 @@ export async function runDepthInference(req, res, next) {
 
 /**
  * GET /api/inference/health
- * Proxy health check to the AI service.
+ * Proxy health check to the AI service with spin-up awareness.
  */
-export async function getAiHealth(req, res) {
+export async function getAiHealth(_req, res) {
   const result = await aiService.checkHealth();
   if (result.success) {
-    return res.json({ success: true, ...result.data });
+    return res.json({ success: true, online: true, status: 'healthy', ...result.data });
   }
-  return res.status(503).json({ success: false, error: result.error });
+
+  // Return a graceful 200 payload with online: false to prevent console log 503 spam
+  // while the container is spinning up on Render free tier.
+  return res.json({
+    success: false,
+    online: false,
+    status: result.status || 'waking_up',
+    message: result.status === 'waking_up'
+      ? 'AI microservice is waking up from Render standby...'
+      : 'AI microservice is currently unreachable.',
+    error: result.error,
+  });
 }

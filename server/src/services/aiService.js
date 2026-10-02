@@ -12,10 +12,20 @@ export class AiServiceClient {
 
   async checkHealth() {
     try {
-      const response = await this.client.get('/api/inference/health');
+      const response = await this.client.get('/api/inference/health', { timeout: 10000 });
       return { success: true, data: response.data };
-    } catch (error) {
-      return { success: false, error: error.message };
+    } catch (primaryErr) {
+      try {
+        const fallback = await this.client.get('/health', { timeout: 10000 });
+        return { success: true, data: fallback.data };
+      } catch (fallbackErr) {
+        const isTimeout = fallbackErr.code === 'ECONNABORTED' || fallbackErr.message?.includes('timeout');
+        return {
+          success: false,
+          status: isTimeout ? 'waking_up' : 'unreachable',
+          error: fallbackErr.message || primaryErr.message,
+        };
+      }
     }
   }
 

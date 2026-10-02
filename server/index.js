@@ -3,10 +3,15 @@ import cors from 'cors';
 import morgan from 'morgan';
 import fs from 'fs';
 import { config } from './src/config/index.js';
+import { connectDB } from './src/config/db.js';
 import apiRoutes from './src/routes/index.js';
 import { errorHandler } from './src/middleware/errorHandler.js';
 
 const app = express();
+
+// Initialize MongoDB Connection
+connectDB().catch((err) => console.error('[DepthWizard] DB initialization error:', err.message));
+
 
 // Ensure uploads directory exists
 if (!fs.existsSync(config.uploadDir)) {
