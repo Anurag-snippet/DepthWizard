@@ -57,9 +57,6 @@ export default function History() {
             <HistoryIcon className="w-5 h-5 text-blue-400" />
             <h1 className="text-xl font-bold text-white">Project History & Archives</h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Browse previous monocular depth predictions, calibrated elevation runs, and generated 3D meshes.
-          </p>
         </div>
 
         <button

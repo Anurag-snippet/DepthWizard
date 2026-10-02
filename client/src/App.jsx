@@ -28,8 +28,6 @@ export default function App() {
   }, []);
 
   const aiStatus = aiHealth.online ? 'online' : (aiHealth.status === 'waking_up' ? 'waking_up' : 'offline');
-  const dbStatus = backendHealth.data?.database?.status === 'connected' ? 'online' : 'offline';
-
   return (
     <BrowserRouter>
       <div className="h-screen w-screen bg-geo-950 text-slate-800 flex flex-col font-sans geo-grid-pattern selection:bg-blue-600 selection:text-white overflow-hidden">
@@ -37,7 +35,6 @@ export default function App() {
         <Navbar 
           backendStatus={backendHealth.online ? 'online' : 'offline'}
           aiStatus={aiStatus}
-          dbStatus={backendHealth.online ? dbStatus : null}
         />
 
         {/* Body Workspace */}
@@ -47,7 +44,7 @@ export default function App() {
             <Routes>
               <Route 
                 path="/" 
-                element={<Dashboard backendHealth={backendHealth} aiHealth={aiHealth} />} 
+                element={<Dashboard />}
               />
               <Route path="/new-analysis" element={<NewAnalysis />} />
               <Route path="/workspace" element={<Workspace />} />

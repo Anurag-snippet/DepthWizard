@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
   Compass, ArrowRight, Play, AlertTriangle,
-  CheckCircle2, Loader2, RefreshCw, FileImage,
+  Loader2, RefreshCw, FileImage,
 } from 'lucide-react';
 import VisualizationPanel from '../components/workspace/VisualizationPanel';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -20,10 +20,8 @@ export default function Workspace() {
   const [loading, setLoading]           = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep]   = useState(1);
-  const [statusMessage, setStatusMessage] = useState('Imagery loaded and validated');
   const [selectedColormap, setSelectedColormap] = useState('turbo');
   const [inferenceError, setInferenceError] = useState(null);
-  const [inferenceStats, setInferenceStats] = useState(null);
 
   // Load project from store on mount and sync with MongoDB
   useEffect(() => {
@@ -46,15 +44,8 @@ export default function Workspace() {
       projectStore.setActiveProject(p.id);
       if (p.depthMapSrc) {
         setCurrentStep(p.mode === 'calibrated' && p.elevationMapSrc ? 5 : 4);
-        setStatusMessage(
-          p.mode === 'calibrated' && p.elevationMapSrc
-            ? 'Pipeline complete — 3D terrain mesh ready'
-            : 'Depth map ready — awaiting calibration'
-        );
-        if (p.inferenceStats) setInferenceStats(p.inferenceStats);
       } else {
         setCurrentStep(1);
-        setStatusMessage('Imagery loaded — ready for TensorFlow inference');
       }
     }
     setLoading(false);
@@ -74,11 +65,9 @@ export default function Workspace() {
     setIsProcessing(true);
     setInferenceError(null);
     setCurrentStep(2);
-    setStatusMessage('Preprocessing image for TensorFlow inference...');
 
     try {
       setCurrentStep(3);
-      setStatusMessage('Running MiDaS v2.1 monocular depth estimation...');
 
       let result;
       if (project.backendProjectId) {
@@ -87,7 +76,6 @@ export default function Workspace() {
         for (let attempt = 0; attempt < 180; attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           status = await getProjectStatus(project.backendProjectId);
-          setStatusMessage(status.processing?.status === 'queued' ? 'Inference job queued...' : 'Running MiDaS v2.1 monocular depth estimation...');
           if (status.status === 'completed' || status.status === 'failed') break;
         }
         if (status?.status === 'failed') throw new Error(status.processing?.error || 'The AI service could not complete this job.');
@@ -114,7 +102,6 @@ export default function Workspace() {
       let calibrationMeta = { calibrationStatus: calibration.status, calibrationWarning: calibration.warning || null };
       if (project.mode === 'calibrated') {
         setCurrentStep(4);
-        setStatusMessage('Applying metric elevation calibration...');
         if (hasMetricCalibration) {
           elevationMapSrc = resolveAiUrl(calibration.elevation_preview_url);
           calibrationMeta = { ...calibrationMeta, referenceDemName: project.referenceDemFilename || 'Uploaded reference DEM', minElevationMeters: calibration.min_elevation_m, maxElevationMeters: calibration.max_elevation_m, calibrationMethod: calibration.method, calibrationMetrics: calibration.metrics, scientificNotice: calibration.warning };
@@ -151,19 +138,12 @@ export default function Workspace() {
 
       const saved = projectStore.saveProject(updatedProject);
       setProject(saved);
-      setInferenceStats(stats);
       setCurrentStep(hasMetricCalibration ? 5 : 4);
-      setStatusMessage(
-        hasMetricCalibration
-          ? 'Pipeline complete — 3D terrain mesh ready'
-          : calibration.status === 'unavailable' ? 'Depth map ready — metric calibration unavailable' : 'Depth map ready — relative disparity mode'
-      );
     } catch (err) {
       console.error('[Workspace] Inference failed:', err);
       const msg = err.response?.data?.detail || err.message || 'Unknown inference error';
       setInferenceError(msg);
       setCurrentStep(1);
-      setStatusMessage('Inference failed — see error below');
     } finally {
       setIsProcessing(false);
     }
@@ -282,10 +262,6 @@ export default function Workspace() {
 
       {/* ── Main Workspace Body ── */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        <div className={`rounded-xl border px-4 py-3 text-sm ${inferenceError ? 'bg-rose-50 border-rose-200 text-rose-700' : isProcessing ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-geo-700 text-slate-600'}`}>
-          <strong>{isProcessing ? 'Working on your terrain…' : hasDepth ? 'Your terrain result is ready' : 'Ready when you are'}</strong><span className="ml-2 text-slate-500">{statusMessage}</span>
-        </div>
-
         {/* Error alert */}
         {inferenceError && (
           <div className="bg-red-950/40 border border-red-700/60 rounded-xl p-4 flex items-start space-x-3">
@@ -296,21 +272,6 @@ export default function Workspace() {
               <p className="text-[11px] text-slate-400 mt-2">
                 Ensure the AI service is running at <code className="text-cyan-300">localhost:8000</code> and the backend at <code className="text-cyan-300">localhost:5000</code>.
               </p>
-            </div>
-          </div>
-        )}
-
-        {/* Inference Stats Card (shown after successful run) */}
-        {inferenceStats && !inferenceError && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-wrap gap-6 items-center">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-xs font-mono text-slate-300">
-              <span>Model: <strong className="text-white">{inferenceStats.modelName}</strong></span>
-              <span>Inference: <strong className="text-cyan-300">{inferenceStats.inferenceDurationMs?.toFixed(0)} ms</strong></span>
-              <span>Total: <strong className="text-cyan-300">{inferenceStats.totalDurationMs?.toFixed(0)} ms</strong></span>
-              <span>
-                Output: <strong className="text-amber-300">{inferenceStats.outputType}</strong>
-              </span>
             </div>
           </div>
         )}
