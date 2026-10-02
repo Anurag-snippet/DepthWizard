@@ -34,6 +34,7 @@ from src.model_engine import DepthEstimationEngine, MODEL_METADATA
 from src.preprocessing import PreprocessingError
 from src.postprocessing import normalize_disparity
 from src.geospatial import CalibrationError, read_raster_metadata, align_reference_dem, calibrate_with_dem, calibrate_with_gcps, save_calibrated_outputs
+from src.exporters import write_export_bundle
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,7 +74,7 @@ app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 
 @app.get("/")
 def get_root():
-    return {
+    response = {
         "service": "DepthWizard AI Inference Engine",
         "problemStatement": "SIH 26175",
         "status": "operational",
@@ -249,6 +250,17 @@ async def estimate_depth(
         },
         "calibration": calibration,
     }
+    # Every export is derived from the actual inference raster. Metric CSV is withheld
+    # unless calibration returned independently held-out reference metrics.
+    response["exports"] = {
+        key.replace("_filename", "_url"): f"/outputs/{value}"
+        for key, value in write_export_bundle(
+            result["raw_disparity"], OUTPUTS_DIR, processing_id,
+            {"model_name": result["model_info"]["model_name"], "model_version": "2.1-small", "inference_duration_ms": result["inference_duration_ms"], "total_processing_duration_ms": result["total_processing_duration_ms"], "configuration": {"colormap": colormap, "source_dimensions": result["prediction_dimensions"]}},
+            calibration,
+        ).items()
+    }
+    return response
 
 if __name__ == "__main__":
     import uvicorn
