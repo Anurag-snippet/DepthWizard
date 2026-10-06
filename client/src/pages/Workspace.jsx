@@ -276,10 +276,10 @@ export default function Workspace() {
           </div>
         )}
 
-        {/* SIH compliance notice for calibrated mode */}
+        {/* Calibration notice for calibrated mode */}
         {isCalibrated && (
           <div className="bg-blue-950/20 border border-blue-700/40 rounded-xl px-4 py-3 text-[11px] text-slate-400 font-mono leading-relaxed">
-            <span className="text-blue-300 font-semibold">SIH Metric Compliance: </span>
+            <span className="text-blue-300 font-semibold">Calibration notice: </span>
             {project.metadata?.scientificNotice || project.metadata?.calibrationWarning || 'Metric elevation was not produced. Relative disparity remains unitless.'}
           </div>
         )}

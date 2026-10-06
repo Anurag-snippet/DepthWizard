@@ -1,7 +1,7 @@
 {
   "name": "depthwizard-server",
   "version": "1.0.0",
-  "description": "Backend orchestrator and elevation calibration engine for DepthWizard (SIH 26175)",
+  "description": "Backend orchestrator and elevation calibration engine for DepthWizard",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -22,8 +22,7 @@
     "depth-estimation",
     "threejs",
     "geospatial",
-    "monocular-depth",
-    "sih26175"
+    "monocular-depth"
   ],
   "author": "DepthWizard Team",
   "license": "MIT"

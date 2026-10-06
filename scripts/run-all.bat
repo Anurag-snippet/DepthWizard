@@ -1,6 +1,6 @@
 @echo off
 echo ===================================================================
-echo [DepthWizard] Starting All Microservices (SIH 26175)
+echo [DepthWizard] Starting All Microservices
 echo ===================================================================
 
 start "DepthWizard AI Service" cmd /k "cd ai-service && .venv\Scripts\python main.py"

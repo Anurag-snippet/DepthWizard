@@ -1,5 +1,5 @@
 """
-DepthWizard AI Microservice (SIH 26175)
+DepthWizard AI Microservice
 FastAPI service orchestrating TensorFlow monocular depth estimation.
 """
 import os
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="DepthWizard AI Service",
-    description="SIH 26175 — TensorFlow Monocular Depth Estimation & Metric Calibration Engine",
+    description="TensorFlow monocular depth estimation and metric calibration engine",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -77,7 +77,7 @@ app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 def get_root():
     response = {
         "service": "DepthWizard AI Inference Engine",
-        "problemStatement": "SIH 26175",
+        "problemStatement": "Single-view terrain estimation",
         "status": "operational",
         "endpoints": {
             "health": "/api/inference/health",

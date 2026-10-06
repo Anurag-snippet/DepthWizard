@@ -248,7 +248,7 @@ export default function NewAnalysis() {
                 {analysisMode === 'calibrated' && <CheckCircle2 className="w-5 h-5 text-blue-400" aria-label="Selected" />}
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Calibrates disparity against an aligned Copernicus / SRTM GeoTIFF DEM to output physical elevation in metres (SIH compliant).
+                Calibrates disparity against an aligned Copernicus / SRTM GeoTIFF DEM to estimate physical elevation in metres.
               </p>
               <div className="mt-3 pt-2 border-t border-geo-700/40 flex items-center space-x-1.5 text-[10px] font-mono text-emerald-400">
                 <FileCheck className="w-3.5 h-3.5" />

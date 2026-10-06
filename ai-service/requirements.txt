@@ -1,4 +1,4 @@
-# DepthWizard AI Microservice Requirements (SIH 26175)
+# DepthWizard AI Microservice Requirements
 # Verified compatible with Python 3.13 / Windows AMD64
 
 # Deep Learning Frameworks

@@ -42,7 +42,7 @@ app.use('/api', apiRoutes);
 app.get('/', (req, res) => {
   res.json({
     project: 'DepthWizard Backend Gateway',
-    problemStatement: 'SIH 26175',
+    problemStatement: 'Single-view terrain estimation',
     healthCheck: '/api/health',
     status: 'operational',
   });

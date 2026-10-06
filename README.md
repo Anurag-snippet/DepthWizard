@@ -1,8 +1,6 @@
 ﻿# DepthWizard
 
 [![Prototype](https://img.shields.io/badge/🌐_Prototype-depthwizard--2tf3.onrender.com-4f46e5?style=for-the-badge)](https://depthwizard-2tf3.onrender.com)
-[![SIH](https://img.shields.io/badge/Smart_India_Hackathon-SIH_26175-f59e0b?style=for-the-badge)](https://www.sih.gov.in)
-
 ## 🔗 Prototype
 
 [Open the DepthWizard prototype](https://depthwizard-2tf3.onrender.com)

@@ -24,7 +24,7 @@ export const getHealth = async (_req, res, next) => {
     res.json({
       success: true,
       service: 'DepthWizard Backend Gateway',
-      version: '1.0.0-sih26175',
+      version: '1.0.0',
       status: 'healthy',
       timestamp: new Date().toISOString(),
       environment: config.nodeEnv,

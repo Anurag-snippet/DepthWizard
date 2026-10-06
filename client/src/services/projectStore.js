@@ -1,7 +1,7 @@
 /**
  * DepthWizard Project Store
  * Local storage & remote MongoDB persistence layer for genuine project records and statistics.
- * In compliance with SIH standards: No fabricated or hardcoded statistical metrics.
+ * Statistical metrics are derived from project data, not fabricated or hardcoded.
  */
 import { updateProjectApi, deleteRemoteProject, fetchRemoteProjects } from './api';
 
