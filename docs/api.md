@@ -1,35 +1,178 @@
-# DepthWizard API
+# DepthWizard API overview
 
-Local base URL: `http://localhost:5000/api`. Production base URL: `https://depthwizard-q2f6.onrender.com/api`. The client reads its API base from `VITE_API_URL`; Express reads the AI service from `AI_SERVICE_URL`.
+This project exposes two relevant API layers:
 
-## Project and processing API
+1. the Express backend at `http://localhost:5000/api`
+2. the Python AI service at `http://localhost:8000`
 
-`POST /projects` accepts `multipart/form-data`: required `image`, optional `name` and `description`. It validates PNG, JPEG, TIFF, and GeoTIFF extensions, applies `MAX_UPLOAD_SIZE_MB`, writes a UUID-named file under `server/uploads`, and responds `201` with a project in `uploaded` status. Internal source paths are never returned.
+The frontend uses the backend as its primary integration layer, while the backend proxies deeper AI calls.
 
-`GET /projects` lists metadata and processing history. `GET /projects/:id` returns one project. Project identifiers accept only letters, digits, `_`, and `-`.
+## 1. Backend API
 
-`POST /projects/:id/process` queues the source image for FastAPI inference and responds `202` immediately:
+### `GET /api/health`
+
+Returns backend health plus AI connectivity and database status.
+
+Example response:
 
 ```json
-{ "success": true, "processing": { "id": "proc_...", "status": "queued" } }
+{
+  "success": true,
+  "service": "DepthWizard Backend Gateway",
+  "status": "healthy",
+  "database": {
+    "status": "disconnected",
+    "provider": "Local File Persistence Fallback"
+  },
+  "aiService": {
+    "url": "http://localhost:8000",
+    "status": "connected",
+    "details": {
+      "status": "healthy",
+      "model_loaded": true
+    }
+  }
+}
 ```
 
-Jobs transition through `queued`, `processing`, `completed`, or `failed`. Completed results come directly from FastAPI and include real preview and raw NumPy output URLs; server filesystem paths are never exposed.
+### `GET /api/projects`
 
-`GET /projects/:id/status` returns the current state. `GET /projects/:id/results` returns completed output, or `409 RESULTS_NOT_READY` before completion. `DELETE /projects/:id` removes metadata and only deletes a source file resolved directly within the configured upload directory; it returns `204`.
+Returns all stored projects and persistence mode.
 
-## Direct inference and health
+### `POST /api/projects`
 
-`POST /inference/depth?colormap=turbo` remains for legacy clients; it uses Multer before proxying to FastAPI. `GET /inference/health` proxies AI health. `GET /health` reports backend/downstream health.
+Uploads a single project image using `multipart/form-data`.
 
-`POST /projects` also accepts an optional `referenceDem` GeoTIFF and `gcpJson` (pixel-referenced GCP records). These are forwarded as `reference_dem` and `gcp_json` to FastAPI. Results expose `calibration.status`, warning text, held-out RMSE/MAE/correlation, and georeferenced elevation/hillshade URLs only when calibration is supported. See [calibration.md](calibration.md).
+Required field:
 
-Inference results include `raw_npy_download_url` for the real float32 relative-disparity raster. Supported metric calibration additionally returns `calibration.elevation_npy_url`, a real float32 elevation raster for the 3D viewer. See [terrain-viewer.md](terrain-viewer.md).
+- `image`: image file
 
-Errors use `{ "success": false, "error": { "code", "message", "status", "timestamp", "path" } }`; oversized uploads return `413`.
+Optional fields:
 
-## Persistence and verification
+- `name`
+- `description`
+- `mode`
+- `referenceDem`: optional DEM file
 
-MongoDB is not currently a runtime dependency. The documented development fallback is `server/data/projects.json`, with source images in `server/uploads`; `server/src/services/projectStore.js` is the replacement seam for a Mongo repository.
+The backend saves the original file under `server/uploads` and stores metadata in the project store.
 
-Start FastAPI (8000), Express (5000), and Vite (5173). Upload an actual image through the client, open its workspace, and choose **Run Inference** to see the real queued/processing/completed state. Service failures are returned to the UI for retry.
+### `POST /api/projects/batch`
+
+Uploads several images in a single request. The field is `images` and accepts up to `20` files in the current implementation.
+
+### `GET /api/projects/:id`
+
+Returns one project by ID.
+
+### `PUT /api/projects/:id`
+
+Updates project metadata and some result fields.
+
+### `POST /api/projects/:id/process`
+
+Starts the asynchronous inference flow. The response returns a processing record:
+
+```json
+{
+  "success": true,
+  "processing": {
+    "id": "proc_...",
+    "status": "queued"
+  }
+}
+```
+
+The processing lifecycle is:
+
+- `queued`
+- `processing`
+- `completed`
+- `failed`
+
+### `GET /api/projects/:id/status`
+
+Returns the current project status and processing object.
+
+### `GET /api/projects/:id/results`
+
+Returns the result payload once processing completed. Calls before completion return a `409` with `RESULTS_NOT_READY`.
+
+### `DELETE /api/projects/:id`
+
+Deletes project metadata and removes the source upload if it is still under the configured upload directory.
+
+## 2. Direct AI inference API
+
+### `GET /health`
+
+AI service health endpoint.
+
+### `GET /api/inference/health`
+
+Health endpoint with model and dependency details.
+
+### `GET /api/v1/model/metadata`
+
+Returns model metadata from the TensorFlow Lite stack.
+
+### `POST /api/inference/depth`
+
+This is the main inference endpoint.
+
+Request method:
+
+- `multipart/form-data`
+
+Form fields:
+
+- `image`: required image file
+- `reference_dem`: optional DEM file
+- `gcp_json`: optional JSON string with GCP data
+
+Query parameter:
+
+- `colormap`: `turbo`, `viridis`, `inferno`, or `grayscale`
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8000/api/inference/depth?colormap=turbo" \
+  -F "image=@sample.png"
+```
+
+Response includes fields such as:
+
+- `success`
+- `processing_id`
+- `filename`
+- `prediction_dimensions`
+- `depth_map_preview_url`
+- `grayscale_preview_url`
+- `raw_npy_download_url`
+- `inference_duration_ms`
+- `total_processing_duration_ms`
+- `calibration`
+
+## 3. File upload expectations
+
+Accepted image extensions in the backend filter are:
+
+- `.jpg`
+- `.jpeg`
+- `.png`
+- `.tif`
+- `.tiff`
+- `.geotiff`
+
+The AI service is also designed to accept GeoTIFF-related payloads.
+
+## 4. Calibration contract
+
+When `reference_dem` or `gcp_json` are supplied, the service may populate the `calibration` block with metric output and warnings. If calibration is not possible, the result remains relative depth and the API returns a warning instead of metric values.
+
+See [calibration.md](calibration.md) for the validation rules and limitations.
+
+## 5. Current caveat
+
+The routes above are the routes implemented in the repo. They should be treated as the source of truth when testing or integrating the application. Documentation should be updated if route behavior changes in future code revisions.
+

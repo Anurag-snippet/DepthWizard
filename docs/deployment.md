@@ -1,96 +1,109 @@
 # Deployment guide
 
-DepthWizard has three independently deployable services: a static Vite client, Express API, and TensorFlow/FastAPI inference worker. A production deployment requires persistent volumes for the API's uploads/project metadata and the AI service's results. Free or serverless hosts are generally unsuitable for TensorFlow inference and durable outputs.
+DepthWizard consists of three deployable runtime pieces:
 
-## Minimum production capacity
+- a React frontend
+- an Express API gateway
+- a Python FastAPI AI worker
 
-| Service | Minimum | Recommended |
-| --- | --- | --- |
-| Client | Static hosting | CDN-backed static hosting |
-| Express API | 1 vCPU, 512 MB RAM | 1–2 vCPU, 1 GB RAM with persistent disk |
-| TensorFlow AI | 4 vCPU, 8 GB RAM, 20 GB persistent disk | GPU host with 8+ GB VRAM, 16 GB RAM, durable object storage/volume |
+This repository includes the local startup flow and production-style configuration values, but the code should be treated as the source of truth. The docs below describe the intended deployment model and the exact environment variables currently used by the project.
 
-The supplied container uses Python 3.11 and Debian GDAL packages (`libgdal-dev`, `gdal-bin`) before installing Rasterio. Verify the image on the selected host; TensorFlow/Rasterio wheels, CPU instruction sets, and GPU driver/CUDA versions must match the target architecture. The supplied TensorFlow workload runs on CPU by default.
+## 1. Service roles
 
-## Required environment variables
+### Frontend
 
-Never commit a real `.env` file. Copy the examples and set public URLs at build time.
+The frontend is a Vite app under `client/`. It is intended to be served as a static site.
+
+### Backend gateway
+
+The Express service runs on port `5000` by default. It is responsible for project storage, upload handling, health checks, and proxying inference requests to the AI service.
+
+### AI service
+
+The FastAPI service runs on port `8000` by default. It owns the TensorFlow Lite model and output generation for depth maps and calibration outputs.
+
+## 2. Required environment variables
+
+The backend config is defined in `server/src/config/index.js`. The important variables are:
 
 ```bash
-# Express
-NODE_ENV=production
 PORT=5000
-AI_SERVICE_URL=https://depthwizard-ai-9i23.onrender.com
-ALLOWED_ORIGINS=https://depthwizard-2tf3.onrender.com
+NODE_ENV=development
+AI_SERVICE_URL=http://localhost:8000
 MAX_UPLOAD_SIZE_MB=50
-PERSISTENT_STORAGE_DIR=/data
-
-# FastAPI
-ENVIRONMENT=production
-PORT=8000
-ALLOWED_ORIGINS=https://depthwizard-2tf3.onrender.com
-OUTPUTS_DIR=/data/outputs
-
-# Vite, at build time only
-VITE_API_URL=https://depthwizard-q2f6.onrender.com/api
-VITE_AI_URL=https://depthwizard-ai-9i23.onrender.com
+ALLOWED_ORIGINS=http://localhost:5173
+MONGODB_URI=mongodb://localhost:27017/depthwizard
+PERSISTENT_STORAGE_DIR=/path/to/project-root
 ```
 
-`ALLOWED_ORIGINS` accepts a comma-separated allow-list. In production it must contain the exact HTTPS frontend origin. The API stops accepting arbitrary browser origins; do not set it to `*`.
+The frontend reads environment values from `import.meta.env` and defaults to:
 
-## Container deployment
+```bash
+VITE_API_URL=http://localhost:5000/api
+VITE_AI_URL=http://localhost:8000
+```
 
-1. Obtain the model artifact legally and place `midas_v21_small.tflite` at `ai-service/models/weights/midas_v21_small.tflite`. It is intentionally ignored by Git.
-2. Set `ALLOWED_ORIGINS=https://depthwizard-2tf3.onrender.com` in the Render environment settings for both the Express API and FastAPI services (or in the shell/untracked `.env` for self-hosted containers).
-3. Start API and AI with durable named volumes:
+The exact values depend on your local environment and deployment host.
+
+## 3. Local startup
+
+From the repo root:
+
+```bash
+npm install
+npm run dev:server
+npm run dev:client
+```
+
+Then start the AI worker in a second terminal:
 
 ```powershell
-docker compose -f docker-compose.production.yml up --build -d
-curl http://localhost:8000/health
-curl http://localhost:5000/api/health
+.\ai-service\.venv\Scripts\python ai-service\main.py
 ```
 
-Build the client with the deployed service URLs, then upload `client/dist` to a static host such as Cloudflare Pages, Netlify, Vercel static output, S3+CloudFront, or an equivalent CDN:
+The expected local endpoints are:
 
-```powershell
-Copy-Item client/.env.production.example client/.env.production
-# Edit client/.env.production with the real HTTPS URLs; do not add secrets.
-npm --prefix client ci
-npm --prefix client run build
+- frontend: `http://localhost:5173`
+- backend: `http://localhost:5000`
+- AI service: `http://localhost:8000`
+
+## 4. Docker deployment
+
+A production stack is defined in `docker-compose.production.yml`. It should be used with a real model file placed at:
+
+```text
+ai-service/models/weights/midas_v21_small.tflite
 ```
 
-Configure static-host fallback rewrites so client routes return `index.html`.
+The model file is intentionally not tracked in Git, so it must be added to the local environment before runtime execution.
 
-## Health, retention, and logging
+## 5. Persistence and storage
 
-- API readiness: `GET /api/health`; AI readiness: `GET /health`.
-- The API shuts down gracefully on `SIGTERM` and `SIGINT`.
-- Source uploads are deliberately not publicly served by Express. Only generated AI output URLs are published after processing.
-- Keep `/data` volumes or replace them with an object-storage persistence adapter before deploying. Deleting a project removes its source uploads; generated AI outputs must be retained by the configured volume/object-store lifecycle for the duration promised to users.
-- Capture API stdout/stderr and FastAPI logs in the host logging service. Do not log request bodies or upload contents.
+The code explicitly uses:
 
-## Production verification checklist
+- `server/uploads/` for uploaded inputs
+- `ai-service/outputs/` for generated AI outputs
+- optional MongoDB for metadata
+- fallback local storage when MongoDB is unavailable
 
-Do this against the actual production URL before calling the app deployed:
+For production-like deployments, the storage volumes must survive service restarts. The repository does not hide the fact that source uploads and output artifacts must be persisted by the deployment environment.
 
-1. Open every client route, including a direct refresh of `/workspace`, `/terrain-viewer`, and `/history`.
-2. Confirm browser requests use only the configured HTTPS API/AI URLs and CORS allows the frontend origin.
-3. Upload an unseen JPG/PNG; wait for real inference; open the depth preview and raw NumPy output; launch the 3D viewer and test orbit, point inspection, free-flight, and path flight.
-4. If a spatially aligned source GeoTIFF and DEM are available, verify held-out metrics and GeoTIFF/CSV exports. Do not claim metre accuracy for relative-only runs.
-5. Upload an invalid image and verify the frontend displays the server error. Test maximum permitted file size and a failed/unavailable AI service.
-6. Delete a project and verify both its metadata and upload are removed while unrelated projects remain.
-7. Restart both services and verify expected retained output files remain accessible from durable storage.
+## 6. CORS and origin policy
 
-## Troubleshooting
+The backend applies CORS using `ALLOWED_ORIGINS`. In production, the allow-list should match the frontend origin exactly rather than using a broad wildcard.
 
-| Symptom | Check |
-| --- | --- |
-| Browser CORS error | Exact HTTPS frontend URL is in both services' `ALLOWED_ORIGINS`; rebuild Vite after changing `VITE_*` values. |
-| API reports AI unavailable | Confirm `AI_SERVICE_URL`, AI health response, DNS/network policy, and the 120-second API-to-AI timeout. |
-| AI fails to start | Confirm model file exists, inspect TensorFlow/Rasterio/GDAL startup logs, and confirm host CPU/GPU compatibility. |
-| Results disappear after restart | Attach persistent `/data` volumes or configure object storage; ephemeral disks are not sufficient. |
-| 413 upload error | Increase `MAX_UPLOAD_SIZE_MB` deliberately and align reverse-proxy body-size limits. |
+## 7. Operational checklist
 
-## Deployment status
+Before calling a deployment ready, validate these runtime conditions:
 
-The AI service is deployed at `https://depthwizard-ai-9i23.onrender.com`, the Express API at `https://depthwizard-q2f6.onrender.com`, and the frontend at `https://depthwizard-2tf3.onrender.com`. Configure the AI URL as `AI_SERVICE_URL` on Express, both public URLs as `VITE_AI_URL` and `VITE_API_URL` when building the client, and the frontend origin as `ALLOWED_ORIGINS` on both hosted services. The full application is not considered production-verified until the checklist above passes.
+1. AI service starts and returns health at `/health` or `/api/inference/health`.
+2. Backend health returns `success: true` and shows AI connectivity.
+3. A sample image can be uploaded and processed end-to-end.
+4. Project status transitions from queued to processing to completed or failed.
+5. Output URLs are served from the AI service and can be opened successfully.
+6. When calibration metadata is provided, metric output appears only if the spatial constraints are valid.
+
+## 8. Deployment caution
+
+This is not a guarantee of production maturity. The repository contains working local logic and scripts, but any hosted deployment still needs live verification on the target infrastructure before it can be called production-ready.
+

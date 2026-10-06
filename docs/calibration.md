@@ -1,11 +1,52 @@
-# Elevation calibration methodology
+# Calibration and metric elevation rules
 
-DepthWizard's MiDaS output is relative inverse depth, not elevation in metres. JPG and PNG uploads always remain relative depth because they do not carry the geospatial transform needed to align a reference DEM.
+DepthWizard separates relative depth from metric elevation. The model output is a relative inverse depth, not a physically meaningful elevation value. A standard JPG or PNG input remains relative depth unless the service can validate a geospatial relationship.
 
-Metric processing is requested only by supplying both a georeferenced source GeoTIFF (CRS and affine geotransform) and a reference DEM GeoTIFF. The service reprojects DEM band one to the source grid using rasterio bilinear resampling, ignoring DEM no-data values. It then fits `elevation = scale × normalized_relative_depth + offset` using finite overlapping cells.
+## When metric output is allowed
 
-Pixel-referenced ground control points are also accepted through the AI API as JSON records of `{row, col, elevation_m}`. At least 25 valid GCPs are required; they use the same held-out validation procedure. GCP calibration still requires a georeferenced source GeoTIFF before a metric elevation raster is written.
+Metric calibration is attempted only when the project includes enough valid geospatial context. In the current implementation, the AI service may process:
 
-Every fifth spatially ordered overlap sample is held out before fitting. RMSE, MAE, and correlation are reported from those held-out samples only. Metric output is withheld when fewer than 125 overlap samples exist, depth has insufficient variation, spatial alignment is absent, or the absolute held-out correlation is below 0.35. The output then remains unitless relative depth with an explicit warning.
+- a reference DEM uploaded as `reference_dem`
+- a GCP JSON payload via `gcp_json`
+- a georeferenced source image or GeoTIFF that preserves CRS and transform metadata
 
-When calibration passes, the service writes a float32, LZW-compressed GeoTIFF with the source CRS and affine transform, plus a colorized elevation preview and hillshade. The resulting values are model-to-DEM regression estimates, not survey-grade point elevations; occlusion, image acquisition geometry, land cover, DEM age/resolution mismatch, and monocular scale ambiguity remain material limitations.
+The backend can pass a DEM file through the project route as `referenceDem` when creating a project, and the AI endpoint accepts the same concept as `reference_dem` in `multipart/form-data`.
+
+## Calibration behavior
+
+The Python service uses the geospatial helpers in `ai-service/src/geospatial.py`. In general, the workflow is:
+
+1. validate source georeferencing
+2. align the reference DEM to the source grid
+3. fit a regression between normalized disparity and the DEM values
+4. validate using held-out samples
+5. write metric outputs only if the calibration is valid enough
+
+The code explicitly warns users that metric conversion is a model-to-DEM regression estimate, not a survey-grade elevation product.
+
+## Held-out validation
+
+The project preserves a scientific check based on spatially separated validation points. If the number of valid overlap samples is too small or the calibration quality is weak, the output is kept as relative depth with a clear warning rather than pretending the values are metric elevation.
+
+## Output behavior
+
+When calibration passes, the service can generate:
+
+- a calibrated elevation raster
+- a hillshade output
+- a GeoTIFF with source CRS and transform
+- a preview image of the metric elevation surface
+
+When the calibration cannot be trusted, only the relative depth outputs are returned.
+
+## Important limitations
+
+Metric elevation is still subject to:
+
+- image geometry and monocular scale ambiguity
+- DEM resolution mismatch
+- land cover or temporal differences
+- georeferencing quality
+- insufficient valid overlap samples
+
+This is an estimate layer, not a substitute for direct measurement or rigorous geodetic control.
