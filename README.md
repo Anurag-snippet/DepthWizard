@@ -4,9 +4,7 @@
 
 ### Single-View Satellite Height Estimation & Interactive 3D Terrain Explorer
 
-[![Live Demo](https://img.shields.io/badge/🌐_Live_App-depthwizard--2tf3.onrender.com-4f46e5?style=for-the-badge)](https://depthwizard-2tf3.onrender.com)
-[![Backend API](https://img.shields.io/badge/⚡_Backend_API-depthwizard--q2f6.onrender.com-0f766e?style=for-the-badge)](https://depthwizard-q2f6.onrender.com/api/health)
-[![AI Service](https://img.shields.io/badge/🤖_AI_Service-depthwizard--ai--9i23.onrender.com-7c3aed?style=for-the-badge)](https://depthwizard-ai-9i23.onrender.com/health)
+[![Prototype](https://img.shields.io/badge/🌐_Prototype-depthwizard--2tf3.onrender.com-4f46e5?style=for-the-badge)](https://depthwizard-2tf3.onrender.com)
 [![SIH](https://img.shields.io/badge/Smart_India_Hackathon-SIH_26175-f59e0b?style=for-the-badge)](https://www.sih.gov.in)
 
 [![Node](https://img.shields.io/badge/Node.js-v24-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
@@ -22,15 +20,9 @@
 
 ---
 
-## 🔗 Live Deployment
+## 🔗 Prototype
 
-| Service | URL | Purpose |
-|---|---|---|
-| 🌐 **Frontend App** | [depthwizard-2tf3.onrender.com](https://depthwizard-2tf3.onrender.com) | React 19 single-page app |
-| ⚡ **Backend API** | [depthwizard-q2f6.onrender.com/api/health](https://depthwizard-q2f6.onrender.com/api/health) | Express gateway + MongoDB |
-| 🤖 **AI Microservice** | [depthwizard-ai-9i23.onrender.com/health](https://depthwizard-ai-9i23.onrender.com/health) | TensorFlow depth engine |
-
-> The AI service runs on Render's free tier and may take **30–60 seconds to wake up** after inactivity. The UI detects this and shows a "waking up" status badge in the navbar.
+[Open the DepthWizard prototype](https://depthwizard-2tf3.onrender.com)
 
 ---
 
