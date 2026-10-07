@@ -11,7 +11,10 @@ The frontend uses the backend as its primary integration layer, while the backen
 
 ### `GET /api/health`
 
-Returns backend health plus AI connectivity and database status.
+Returns backend health plus AI connectivity and database status. This endpoint inspects the AI service in two stages:
+
+1. `GET /health` for liveness
+2. `GET /ready` for readiness
 
 Example response:
 
@@ -26,14 +29,22 @@ Example response:
   },
   "aiService": {
     "url": "http://localhost:8000",
-    "status": "connected",
+    "status": "ready",
     "details": {
-      "status": "healthy",
+      "status": "ready",
       "model_loaded": true
     }
   }
 }
 ```
+
+AI status values are normalized to the backend/frontend states:
+
+- `ready`
+- `waking_up`
+- `loading`
+- `failed`
+- `unavailable`
 
 ### `GET /api/projects`
 
@@ -105,11 +116,38 @@ Deletes project metadata and removes the source upload if it is still under the 
 
 ### `GET /health`
 
-AI service health endpoint.
+AI service liveness endpoint. Must remain lightweight and not import TensorFlow or depend on model readiness. Used for Render health probes.
+
+Response:
+
+```json
+{
+  "status": "healthy",
+  "service": "ai-service"
+}
+```
+
+### `GET /ready`
+
+AI service readiness endpoint. Returns whether the model is currently able to run inference.
+
+Possible responses:
+
+```json
+{ "status": "ready", "model_loaded": true }
+```
+
+```json
+{ "status": "loading", "model_loaded": false }
+```
+
+```json
+{ "status": "failed", "model_loaded": false }
+```
 
 ### `GET /api/inference/health`
 
-Health endpoint with model and dependency details.
+Compatibility endpoint used by older backend/frontend callers. It maps the model status into the same backend-friendly states used by the UI and health checks.
 
 ### `GET /api/v1/model/metadata`
 

@@ -67,7 +67,24 @@ The expected local endpoints are:
 - backend: `http://localhost:5000`
 - AI service: `http://localhost:8000`
 
-## 4. Docker deployment
+## 4. Render / cold-start health model
+
+The AI worker must expose two separate concepts:
+
+- `GET /health` for process liveness only
+- `GET /ready` for model readiness
+
+This matters for Render free-tier deployments. A sleeping service can still come back online quickly, but the model may take longer to initialize. The Render health check path should be `/health`, not `/ready`, because `/ready` is intentionally a model-state check that can return `503` while the model is still loading.
+
+Recommended health semantics:
+
+- `/health` → `200` when the FastAPI process is alive
+- `/ready` → `200` when `status: ready`
+- `/ready` → `503` when `status: loading` or `status: failed`
+
+This prevents health-check failures from being mistaken for a generic AI outage or from making the frontend show `AI Unavailable` during a normal cold start.
+
+## 5. Docker deployment
 
 A production stack is defined in `docker-compose.production.yml`. It should be used with a real model file placed at:
 
@@ -77,7 +94,7 @@ ai-service/models/weights/midas_v21_small.tflite
 
 The model file is intentionally not tracked in Git, so it must be added to the local environment before runtime execution.
 
-## 5. Persistence and storage
+## 6. Persistence and storage
 
 The code explicitly uses:
 
@@ -96,12 +113,13 @@ The backend applies CORS using `ALLOWED_ORIGINS`. In production, the allow-list 
 
 Before calling a deployment ready, validate these runtime conditions:
 
-1. AI service starts and returns health at `/health` or `/api/inference/health`.
-2. Backend health returns `success: true` and shows AI connectivity.
-3. A sample image can be uploaded and processed end-to-end.
-4. Project status transitions from queued to processing to completed or failed.
-5. Output URLs are served from the AI service and can be opened successfully.
-6. When calibration metadata is provided, metric output appears only if the spatial constraints are valid.
+1. AI service returns `200` at `/health` while the process is alive.
+2. Backend AI health checks `/health` first and then `/ready` to distinguish liveness from model readiness.
+3. A cold start shows `waking_up` or `loading` instead of a hard `AI Unavailable` without context.
+4. A sample image can be uploaded and processed end-to-end once the model is ready.
+5. Project status transitions from queued to processing to completed or failed.
+6. Output URLs are served from the AI service and can be opened successfully.
+7. When calibration metadata is provided, metric output appears only if the spatial constraints are valid.
 
 ## 8. Deployment caution
 

@@ -123,12 +123,25 @@ DepthWizard/
 
 ### AI service
 
-- `GET /health`
-- `GET /api/inference/health`
+- `GET /health` — lightweight liveness check; used by Render health probes and must remain fast without TensorFlow imports.
+- `GET /ready` — readiness check; reports whether the model is `loading`, `ready`, or `failed`.
+- `GET /api/inference/health` — compatibility alias that reports the same health state in a backend-friendly shape.
 - `GET /api/v1/model/metadata`
 - `POST /api/inference/depth`
 
 The Python service is the one that actually performs inference and writes output files into `ai-service/outputs/`.
+
+### AI health states
+
+The backend and frontend now distinguish between these states:
+
+- `ready` — model loaded and inference can run
+- `waking_up` — Render or cold-start recovery in progress
+- `loading` — FastAPI is alive but model is still initializing
+- `failed` — model initialization failed
+- `unavailable` — service cannot be reached
+
+The key rule is that Render health checks use `/health`, while real model readiness is reported via `/ready`.
 
 ## 🚀 Local development
 
