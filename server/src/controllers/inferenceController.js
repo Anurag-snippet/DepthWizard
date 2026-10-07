@@ -60,19 +60,26 @@ export async function runDepthInference(req, res, _next) {
  */
 export async function getAiHealth(_req, res) {
   const result = await aiService.checkHealth();
-  if (result.success) {
-    return res.json({ success: true, online: true, status: 'healthy', ...result.data });
+  const normalizedStatus = result.status || 'unavailable';
+
+  if (result.success && normalizedStatus === 'ready') {
+    return res.json({ success: true, online: true, status: 'ready', ...result.data });
   }
 
-  // Return a graceful 200 payload with online: false to prevent console log 503 spam
-  // while the container is spinning up on Render free tier.
   return res.json({
     success: false,
     online: false,
-    status: result.status || 'waking_up',
-    message: result.status === 'waking_up'
-      ? 'AI microservice is waking up from Render standby...'
-      : 'AI microservice is currently unreachable.',
+    status: normalizedStatus,
+    message: result.message || (
+      normalizedStatus === 'waking_up'
+        ? 'AI service is waking up. Please wait a few seconds while the model initializes.'
+        : normalizedStatus === 'loading'
+          ? 'AI model is still initializing.'
+          : normalizedStatus === 'failed'
+            ? 'AI model could not be initialized.'
+            : 'AI service is currently unavailable.'
+    ),
     error: result.error,
+    ...(result.data ? { data: result.data } : {}),
   });
 }

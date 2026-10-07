@@ -36,20 +36,46 @@ from src.postprocessing import normalize_disparity
 from src.geospatial import CalibrationError, read_raster_metadata, align_reference_dem, calibrate_with_dem, calibrate_with_gcps, save_calibrated_outputs
 from src.exporters import write_export_bundle
 
+
+def set_model_status(status: str, error: Optional[str] = None):
+    app.state.model_status = status
+    app.state.model_error = error
+
+
+async def load_model_once():
+    model_path = os.path.join(MODELS_DIR, "midas_v21_small.tflite")
+    logger.info("[DepthWizard AI] Starting service")
+    logger.info("[DepthWizard AI] Model status: loading")
+    logger.info("[DepthWizard AI] Loading MiDaS TFLite model")
+    try:
+        engine = DepthEstimationEngine.get_instance(model_path=model_path)
+        app.state.engine = engine
+        app.state.model_status = "ready"
+        app.state.model_error = None
+        logger.info("[DepthWizard AI] Model loaded successfully in %s seconds", "startup")
+        logger.info("[DepthWizard AI] Model status: ready")
+        return engine
+    except Exception as exc:
+        app.state.engine = None
+        app.state.model_status = "failed"
+        app.state.model_error = str(exc)
+        logger.exception("[DepthWizard AI] Model initialization failed")
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan event handler: Preloads the TensorFlow depth model ONCE at service startup.
     """
-    logger.info("Initializing DepthWizard AI Service Lifespan...")
-    model_path = os.path.join(MODELS_DIR, "midas_v21_small.tflite")
+    logger.info("[DepthWizard AI] Starting service")
+    app.state.engine = None
+    app.state.model_status = "loading"
+    app.state.model_error = None
     try:
-        engine = DepthEstimationEngine.get_instance(model_path=model_path)
-        app.state.engine = engine
-        logger.info("TensorFlow Monocular Depth Engine successfully initialized and ready.")
-    except Exception as e:
-        logger.error(f"Failed to preload depth model on startup: {e}")
-        app.state.engine = None
+        await load_model_once()
+    except Exception:
+        logger.exception("[DepthWizard AI] Model initialization failed")
     yield
     logger.info("Shutting down DepthWizard AI Service...")
 
@@ -59,6 +85,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+app.state.engine = None
+app.state.model_status = "loading"
+app.state.model_error = None
 
 # CORS configuration
 allowed_origins = [origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
@@ -90,34 +119,25 @@ def get_root():
 @app.get("/health")
 @app.get("/api/inference/health")
 def get_inference_health():
-    """
-    Returns service health and model loading status.
-    """
-    try:
-        import tensorflow as tf
-        import keras
-        import numpy as np
+    """Liveness probe: confirms the FastAPI process is alive without loading TensorFlow."""
+    return {"status": "healthy", "service": "ai-service"}
 
-        engine = getattr(app.state, "engine", None)
-        model_ready = engine is not None and engine.interpreter is not None
 
-        return {
-            "status": "healthy" if model_ready else "degraded",
-            "service": "ai-service",
-            "python_version": sys.version.split()[0],
-            "tensorflow_version": tf.__version__,
-            "keras_version": keras.__version__,
-            "numpy_version": np.__version__,
-            "model_loaded": model_ready,
-            "model_metadata": MODEL_METADATA if model_ready else None,
-            "framework_verified": True
-        }
-    except Exception as e:
-        logger.error(f"Health check failure: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
+@app.get("/ready")
+def get_ai_readiness():
+    """Readiness probe: confirms the model can perform inference and reports startup state."""
+    model_status = getattr(app.state, "model_status", "loading")
+    engine = getattr(app.state, "engine", None)
+    model_ready = model_status == "ready" and engine is not None and getattr(engine, "interpreter", None) is not None
+
+    if model_ready:
+        return {"status": "ready", "model_loaded": True}
+    if model_status == "loading":
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "loading", "model_loaded": False})
+    if model_status == "failed":
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "failed", "model_loaded": False})
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "loading", "model_loaded": False})
+
 
 @app.get("/api/v1/model/metadata")
 def get_model_metadata():
@@ -135,11 +155,25 @@ async def estimate_depth(
     Executes real TensorFlow monocular depth estimation on the uploaded image.
     Returns preview paths, raw float32 .npy location, and execution metrics.
     """
+    model_status = getattr(app.state, "model_status", "loading")
     engine: Optional[DepthEstimationEngine] = getattr(app.state, "engine", None)
-    if engine is None:
+    if model_status == "loading":
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Depth estimation engine is not loaded or failed initialization."
+            detail={
+                "success": False,
+                "status": "model_loading",
+                "message": "AI model is still initializing. Please wait a few seconds and try again.",
+            },
+        )
+    if model_status == "failed" or engine is None or getattr(engine, "interpreter", None) is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "success": False,
+                "status": "model_unavailable",
+                "message": "AI model could not be initialized.",
+            },
         )
 
     # 1. Read uploaded payload

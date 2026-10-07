@@ -37,7 +37,13 @@ export default function Navbar({ backendStatus, aiStatus }) {
         <StatusBadge 
           status={aiStatus} 
           label="AI" 
-          detail={aiStatus === 'online' ? 'online' : (aiStatus === 'waking_up' ? 'waking up' : 'unavailable')}
+          detail={
+            aiStatus === 'ready' ? 'online'
+              : aiStatus === 'waking_up' ? 'waking up'
+                : aiStatus === 'loading' ? 'loading'
+                  : aiStatus === 'failed' ? 'error'
+                    : 'unavailable'
+          }
         />
       </div>
     </header>

@@ -32,25 +32,48 @@ export const checkBackendHealth = async () => {
   }
 };
 
+/** Map backend AI health responses into the UI status states used by the navbar. */
+export const normalizeAiHealthStatus = (payload = {}) => {
+  const status = payload?.status || payload?.state || 'unavailable';
+
+  if (status === 'ready' || payload?.online === true || payload?.model_loaded === true) {
+    return { online: true, status: 'ready', message: payload?.message || 'AI service is online.' };
+  }
+  if (status === 'loading') {
+    return { online: false, status: 'loading', message: payload?.message || 'AI model is still initializing.' };
+  }
+  if (status === 'failed') {
+    return { online: false, status: 'failed', message: payload?.message || 'AI model could not be initialized.' };
+  }
+  if (status === 'waking_up' || payload?.message?.toLowerCase().includes('waking')) {
+    return { online: false, status: 'waking_up', message: payload?.message || 'AI service is waking up. Please wait a few seconds while the model initializes.' };
+  }
+  if (status === 'unavailable' || status === 'offline' || status === 'unreachable') {
+    return { online: false, status: 'unavailable', message: payload?.message || 'AI service is currently unavailable.' };
+  }
+  return { online: false, status: 'unavailable', message: payload?.message || 'AI service is currently unavailable.' };
+};
+
 /** Health check — AI service (via proxy with spin-up awareness) */
 export const checkAiHealth = async () => {
   try {
     const res = await apiClient.get('/inference/health', { timeout: 12000 });
-    if (res.data?.online === true || res.data?.status === 'healthy') {
-      return { online: true, status: 'online', data: res.data };
-    }
+    const normalized = normalizeAiHealthStatus(res.data);
     return {
-      online: false,
-      status: res.data?.status || 'waking_up',
+      online: normalized.online,
+      status: normalized.status,
       data: res.data,
-      message: res.data?.message || 'AI service waking up...',
+      message: normalized.message,
     };
   } catch (error) {
     const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
     return {
       online: false,
-      status: isTimeout ? 'waking_up' : 'offline',
+      status: isTimeout ? 'waking_up' : 'unavailable',
       error: error.message,
+      message: isTimeout
+        ? 'AI service is waking up. Please wait a few seconds while the model initializes.'
+        : 'AI service is currently unavailable.',
     };
   }
 };

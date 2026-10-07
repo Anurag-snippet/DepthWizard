@@ -65,11 +65,13 @@ class DepthEstimationEngine:
 
     def _load_model(self):
         t0 = time.time()
-        logger.info(f"Loading TensorFlow Lite interpreter from {self.model_path}...")
-        
+        requested_threads = int(os.environ.get("TFLITE_NUM_THREADS", "2"))
+        num_threads = max(1, min(requested_threads, os.cpu_count() or 1, 4))
+        logger.info(f"Loading TensorFlow Lite interpreter from {self.model_path} with {num_threads} threads...")
+
         self.interpreter = tf.lite.Interpreter(
             model_path=self.model_path,
-            num_threads=4
+            num_threads=num_threads
         )
         self.interpreter.allocate_tensors()
         
@@ -83,7 +85,8 @@ class DepthEstimationEngine:
         self.interpreter.set_tensor(self.input_index, dummy_input)
         self.interpreter.invoke()
         
-        logger.info(f"Model loaded and warmed up in {(time.time() - t0):.2f}s.")
+        elapsed = time.time() - t0
+        logger.info(f"[DepthWizard AI] Model loaded successfully in {elapsed:.2f}s")
 
     def run_inference(
         self,

@@ -8,7 +8,7 @@ import VisualizationPanel from '../components/workspace/VisualizationPanel';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import EmptyState from '../components/common/EmptyState';
 import { projectStore } from '../services/projectStore';
-import { runDepthInference, imageSourceToBlob, startProjectProcessing, getProjectStatus, getProjectResults, resolveAiUrl } from '../services/api';
+import { runDepthInference, imageSourceToBlob, startProjectProcessing, getProjectStatus, getProjectResults, resolveAiUrl, checkAiHealth } from '../services/api';
 
 export default function Workspace() {
   const [searchParams] = useSearchParams();
@@ -62,6 +62,20 @@ export default function Workspace() {
   // ─── Run Inference ─────────────────────────────────────────────────────────
   const handleRunInference = useCallback(async () => {
     if (!project?.imageSrc && !project?.backendProjectId) return;
+
+    const aiStatus = await checkAiHealth();
+    if (aiStatus.status === 'waking_up' || aiStatus.status === 'loading') {
+      setInferenceError('AI service is waking up. Please wait a few seconds while the model initializes.');
+      setCurrentStep(1);
+      return;
+    }
+
+    if (aiStatus.status === 'failed' || aiStatus.status === 'unavailable') {
+      setInferenceError('AI service is currently unavailable. Please try again in a moment.');
+      setCurrentStep(1);
+      return;
+    }
+
     setIsProcessing(true);
     setInferenceError(null);
     setCurrentStep(2);
