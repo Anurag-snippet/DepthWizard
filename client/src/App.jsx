@@ -22,7 +22,8 @@ export default function App() {
     setBackendHealth(bRes);
 
     const aRes = await checkAiHealth();
-    const retryAttempt = aRes.status === 'waking_up' || aRes.status === 'loading' ? retryAttemptRef.current + 1 : 0;
+    const shouldRetry = aRes.status === 'waking_up' || aRes.status === 'loading' || aRes.status === 'unavailable';
+    const retryAttempt = shouldRetry ? retryAttemptRef.current + 1 : 0;
     retryAttemptRef.current = retryAttempt;
     setAiHealth({ ...aRes, retryAttempt });
   }, []);
@@ -32,18 +33,18 @@ export default function App() {
   }, [refreshStatus]);
 
   useEffect(() => {
-    if (aiHealth.status !== 'waking_up' && aiHealth.status !== 'loading') {
+    if (aiHealth.status !== 'waking_up' && aiHealth.status !== 'loading' && aiHealth.status !== 'unavailable') {
       retryAttemptRef.current = 0;
       return undefined;
     }
 
-    const delayIndex = Math.min(retryAttemptRef.current, AI_RETRY_DELAYS.length - 1);
+    const delayIndex = Math.min(Math.max(aiHealth.retryAttempt - 1, 0), AI_RETRY_DELAYS.length - 1);
     const timeout = setTimeout(() => {
       refreshStatus();
     }, AI_RETRY_DELAYS[delayIndex]);
 
     return () => clearTimeout(timeout);
-  }, [aiHealth.status, refreshStatus]);
+  }, [aiHealth.status, aiHealth.retryAttempt, refreshStatus]);
 
   const aiStatus = aiHealth.status || 'unavailable';
   return (
