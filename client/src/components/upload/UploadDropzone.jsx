@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { UploadCloud, FileImage } from 'lucide-react';
 
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'tif', 'tiff'];
-const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200MB
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
 export default function UploadDropzone({ onFileSelected, onError, isProcessing }) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -26,7 +26,7 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
 
       if (file.size > MAX_FILE_SIZE_BYTES) {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-        reject(new Error(`"${file.name}": Exceeds 200 MB limit (${sizeMB} MB).`));
+        reject(new Error(`"${file.name}": Exceeds 50 MB limit (${sizeMB} MB).`));
         return;
       }
 
@@ -136,7 +136,7 @@ export default function UploadDropzone({ onFileSelected, onError, isProcessing }
             Click to browse or drop satellite / aerial imagery here
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Upload one GeoTIFF (.tif, .tiff), PNG, or JPEG file up to 200 MB
+            Upload one GeoTIFF (.tif, .tiff), PNG, or JPEG file up to 50 MB
           </p>
         </div>
 
