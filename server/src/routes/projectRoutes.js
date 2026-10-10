@@ -61,7 +61,7 @@ router.get('/', async (_req, res, next) => {
   }
 });
 
-// POST /api/projects — Upload single satellite image
+// POST /api/projects — Upload a single satellite image
 router.post(
   '/',
   upload.fields([
@@ -111,54 +111,6 @@ router.post(
     }
   }
 );
-
-// POST /api/projects/batch — Upload multiple satellite images at once
-router.post('/batch', upload.array('images', 20), async (req, res, next) => {
-  try {
-    const files = req.files;
-    if (!files || files.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'IMAGES_REQUIRED', message: 'Upload at least one image in the images field.' },
-      });
-    }
-
-    const createdProjects = [];
-    for (const file of files) {
-      const project = {
-        id: `proj_${crypto.randomUUID()}`,
-        name: path.parse(file.originalname).name.replace(/[_-]/g, ' '),
-        description: req.body.description || 'Batch uploaded satellite imagery',
-        mode: req.body.mode || 'relative',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        status: 'uploaded',
-        stage: 'ready_for_inference',
-        processing: null,
-        uploadPath: file.path,
-        originalFilename: path.basename(file.originalname),
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        metadata: {
-          filename: path.basename(file.originalname),
-          fileSize: file.size,
-        },
-      };
-
-      const saved = await projectStore.save(project);
-      createdProjects.push(projectResponse(saved));
-    }
-
-    return res.status(201).json({
-      success: true,
-      count: createdProjects.length,
-      persistence: isMongoConnected() ? 'mongodb-atlas' : 'local-file-fallback',
-      projects: createdProjects,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 // GET /api/projects/:id — Get project by ID
 router.get('/:id', async (req, res, next) => {
