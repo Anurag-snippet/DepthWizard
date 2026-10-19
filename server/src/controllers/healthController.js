@@ -4,7 +4,7 @@ import { isMongoConnected } from '../config/db.js';
 
 export const getHealth = async (_req, res, next) => {
   try {
-    const aiResponse = await axios.get(`${config.aiServiceUrl}/health`, { timeout: 8000 });
+    const aiResponse = await axios.get(`${config.aiServiceUrl}/health`, { timeout: 60000 });
     const aiDetails = aiResponse.data || {};
 
     let aiServiceStatus = 'unavailable';
@@ -12,7 +12,7 @@ export const getHealth = async (_req, res, next) => {
 
     if (aiDetails.status === 'healthy') {
       try {
-        const readyResponse = await axios.get(`${config.aiServiceUrl}/ready`, { timeout: 10000 });
+        const readyResponse = await axios.get(`${config.aiServiceUrl}/ready`, { timeout: 60000 });
         const readyData = readyResponse.data || {};
         aiServiceStatus = readyData.status === 'ready' ? 'ready' : (readyData.status === 'loading' ? 'loading' : (readyData.status === 'failed' ? 'failed' : 'waking_up'));
         aiServiceDetails = readyData;

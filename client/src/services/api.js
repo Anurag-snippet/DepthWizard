@@ -25,7 +25,7 @@ export const apiClient = axios.create({
 /** Health check — Express backend and MongoDB status */
 export const checkBackendHealth = async () => {
   try {
-    const res = await apiClient.get('/health', { timeout: 10000 });
+    const res = await apiClient.get('/health', { timeout: 65000 });
     return { online: true, data: res.data };
   } catch (error) {
     return { online: false, error: error.message };
@@ -57,7 +57,7 @@ export const normalizeAiHealthStatus = (payload = {}) => {
 /** Health check — AI service (via proxy with spin-up awareness) */
 export const checkAiHealth = async () => {
   try {
-    const res = await apiClient.get('/inference/health', { timeout: 12000 });
+    const res = await apiClient.get('/inference/health', { timeout: 65000 });
     const normalized = normalizeAiHealthStatus(res.data);
     return {
       online: normalized.online,

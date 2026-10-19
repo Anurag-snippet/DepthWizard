@@ -10,7 +10,7 @@ import History from './pages/History';
 import NotFound from './pages/NotFound';
 import { checkBackendHealth, checkAiHealth } from './services/api';
 
-const AI_RETRY_DELAYS = [5000, 10000, 20000, 30000];
+const AI_RETRY_DELAYS = [5000, 10000, 15000, 20000, 30000, 30000, 30000, 30000];
 
 export default function App() {
   const [backendHealth, setBackendHealth] = useState({ online: false });

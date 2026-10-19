@@ -32,13 +32,13 @@ export class AiServiceClient {
 
   async checkHealth() {
     try {
-      const healthResponse = await this.client.get('/health', { timeout: 8000 });
+      const healthResponse = await this.client.get('/health', { timeout: 60000 });
       if (healthResponse.data?.status !== 'healthy') {
         return { success: false, status: 'unavailable', data: healthResponse.data, error: 'AI service is not reporting healthy.' };
       }
 
       try {
-        const readyResponse = await this.client.get('/ready', { timeout: 10000 });
+        const readyResponse = await this.client.get('/ready', { timeout: 60000 });
         const mapped = mapAiHealthStatus(readyResponse.data, 'loading');
         return { ...mapped, data: readyResponse.data };
       } catch (readyError) {
